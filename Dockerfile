@@ -1,23 +1,22 @@
-# Use an official lightweight Python image
-FROM python:3.9-slim
+# Use the official Nginx image from Docker Hub
+FROM nginx:stable-alpine
 
-# Set the working directory in the container
-WORKDIR /app
+# Remove the default Nginx configuration file
+RUN rm /etc/nginx/conf.d/default.conf
 
-# Set environment variables
-ENV PYTHONUNBUFFERED TRUE
-# ENV PORT 8080 # PORT is usually set by Cloud Run automatically
+# Copy a custom Nginx configuration file (optional, but good practice)
+# You can create a simple nginx.conf if needed, or rely on defaults for basic serving
+# COPY nginx.conf /etc/nginx/conf.d/
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Copy the game's static files (HTML, CSS, JS) into the Nginx web root directory
+COPY index.html /usr/share/nginx/html/
+COPY style.css /usr/share/nginx/html/
+COPY script.js /usr/share/nginx/html/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Expose port 80 (the default HTTP port Nginx listens on)
+EXPOSE 80
 
-# Copy the rest of the application code into the container
-COPY . .
+# The default Nginx command starts the server, so no explicit CMD is needed unless customizing
+# CMD ["nginx", "-g", "daemon off;"] # This is the default command
 
-# --- Updated CMD ---
-# Use the 'shell' form of CMD. This allows the shell ($0) within the container
-# to handle the expansion of the $PORT environment variable directly.
-CMD gunicorn --bind 0.0.0.0:$PORT main:app
+
