@@ -25,12 +25,12 @@ const SHIP_START_X = 150;
 const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
 // Physics Constants
 const GRAVITY_PER_SECOND = 900;
-const FLAP_VELOCITY = -280;
+const FLAP_VELOCITY = -250; // *** UPDATED: Was -280 *** (Weaker flap)
 // Obstacle Constants
 const OBSTACLE_WIDTH = 80;
 const OBSTACLE_GAP = 120;
 const OBSTACLE_COLOR = '#8b4513';
-const OBSTACLE_SPEED_PER_SECOND = 180;
+const OBSTACLE_SPEED_PER_SECOND = 330; // *** UPDATED: Was 180 *** (Faster obstacles)
 const OBSTACLE_SPAWN_INTERVAL_MS = 2000;
 // Background Constants
 const STAR_COUNT = 100;
@@ -44,16 +44,18 @@ const COIN_COLOR = '#ffd700';
 const COIN_SCORE = 5;
 const COIN_SPAWN_CHANCE = 0.7;
 // *** Gnome Constants ***
-const GNOME_WIDTH = 30; // Slightly wider for rounded look
-const GNOME_HEIGHT = 45; // Slightly taller
+const GNOME_WIDTH = 30;
+const GNOME_HEIGHT = 45;
 const GNOME_COLOR_BODY = '#228B22'; // ForestGreen
 const GNOME_COLOR_HAT = '#DC143C'; // Crimson Red
 const GNOME_COLOR_BEARD = '#FFFFFF'; // White
+const GNOME_COLOR_FACE = '#FFDAB9'; // PeachPuff (skin tone)
+const GNOME_COLOR_EYES = '#000000'; // Black
 const GNOME_SPEED_PER_SECOND = 210;
 const GNOME_SPAWN_INTERVAL_MIN_MS = 4000;
 const GNOME_SPAWN_INTERVAL_RANGE_MS = 5000;
-const GNOME_VERTICAL_AMP = 25; // How much gnome moves up/down
-const GNOME_VERTICAL_FREQ = 0.01; // How fast gnome moves up/down relative to x pos
+const GNOME_VERTICAL_AMP = 25;
+const GNOME_VERTICAL_FREQ = 0.01;
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -179,30 +181,45 @@ function drawCoins() {
 // *** Function to draw gnomes - UPDATED Appearance ***
 function drawGnomes() {
     gnomes.forEach(gnome => {
-        const bodyHeight = GNOME_HEIGHT * 0.6;
-        const bodyY = gnome.y + GNOME_HEIGHT * 0.4;
-        const headRadius = GNOME_WIDTH * 0.3;
+        const bodyW = GNOME_WIDTH * 0.8; // Body slightly narrower than total width
+        const bodyX = gnome.x + (GNOME_WIDTH - bodyW) / 2;
+        const bodyHeight = GNOME_HEIGHT * 0.55;
+        const bodyY = gnome.y + GNOME_HEIGHT * 0.45;
         const hatHeight = GNOME_HEIGHT * 0.4;
         const hatPointY = gnome.y;
         const hatBaseY = gnome.y + hatHeight;
-
-        // Beard (draw first, behind body/hat)
-        ctx.fillStyle = GNOME_COLOR_BEARD;
-        ctx.beginPath();
-        ctx.moveTo(gnome.x + GNOME_WIDTH * 0.1, hatBaseY);
-        ctx.quadraticCurveTo(gnome.x + GNOME_WIDTH / 2, bodyY + bodyHeight * 0.5, gnome.x + GNOME_WIDTH * 0.9, hatBaseY);
-        ctx.closePath();
-        ctx.fill();
+        const faceY = hatBaseY - GNOME_HEIGHT * 0.1; // Top of face area
+        const eyeY = faceY + GNOME_HEIGHT * 0.08;
+        const eyeSpacing = GNOME_WIDTH * 0.2;
+        const eyeSize = GNOME_WIDTH * 0.08;
+        const eyebrowY = eyeY - GNOME_HEIGHT * 0.05;
 
         // Body (rounded rectangle/capsule)
         ctx.fillStyle = GNOME_COLOR_BODY;
         ctx.beginPath();
-        ctx.moveTo(gnome.x, bodyY);
-        ctx.lineTo(gnome.x, bodyY + bodyHeight - GNOME_WIDTH / 2); // Left side
-        ctx.arcTo(gnome.x, bodyY + bodyHeight, gnome.x + GNOME_WIDTH / 2, bodyY + bodyHeight, GNOME_WIDTH / 2); // Bottom curve
-        ctx.arcTo(gnome.x + GNOME_WIDTH, bodyY + bodyHeight, gnome.x + GNOME_WIDTH, bodyY, GNOME_WIDTH / 2); // Right curve
-        ctx.lineTo(gnome.x + GNOME_WIDTH, bodyY); // Right side
-        ctx.closePath(); // Close top (will be covered by hat/beard)
+        ctx.moveTo(bodyX, bodyY + bodyW/2); // Start top left rounded corner
+        ctx.arcTo(bodyX, bodyY, bodyX + bodyW/2, bodyY, bodyW/2); // Top left curve
+        ctx.arcTo(bodyX + bodyW, bodyY, bodyX + bodyW, bodyY + bodyW/2, bodyW/2); // Top right curve
+        ctx.lineTo(bodyX + bodyW, bodyY + bodyHeight - bodyW/2); // Right side
+        ctx.arcTo(bodyX + bodyW, bodyY + bodyHeight, bodyX + bodyW/2, bodyY + bodyHeight, bodyW/2); // Bottom right curve
+        ctx.arcTo(bodyX, bodyY + bodyHeight, bodyX, bodyY + bodyHeight - bodyW/2, bodyW/2); // Bottom left curve
+        ctx.closePath();
+        ctx.fill();
+
+        // Face Area (under hat, above beard)
+        ctx.fillStyle = GNOME_COLOR_FACE;
+        ctx.beginPath();
+        ctx.rect(gnome.x + GNOME_WIDTH * 0.15, faceY, GNOME_WIDTH * 0.7, GNOME_HEIGHT * 0.2);
+        ctx.fill();
+
+        // Beard (draw over body, under face)
+        ctx.fillStyle = GNOME_COLOR_BEARD;
+        ctx.beginPath();
+        ctx.moveTo(gnome.x + GNOME_WIDTH * 0.15, faceY); // Start at face bottom-left
+        ctx.lineTo(gnome.x, bodyY + bodyHeight * 0.3); // Point down-left
+        ctx.quadraticCurveTo(gnome.x + GNOME_WIDTH / 2, bodyY + bodyHeight * 0.8, gnome.x + GNOME_WIDTH, bodyY + bodyHeight * 0.3); // Bottom curve
+        ctx.lineTo(gnome.x + GNOME_WIDTH * 0.85, faceY); // Point up-right to face bottom-right
+        ctx.closePath();
         ctx.fill();
 
         // Hat (smoother triangle)
@@ -213,6 +230,28 @@ function drawGnomes() {
         ctx.quadraticCurveTo(gnome.x + GNOME_WIDTH / 2, hatBaseY + hatHeight * 0.1, gnome.x, hatBaseY); // Curved bottom back to left base
         ctx.closePath();
         ctx.fill();
+
+        // Eyes (simple dots)
+        ctx.fillStyle = GNOME_COLOR_EYES;
+        ctx.beginPath();
+        ctx.arc(gnome.x + GNOME_WIDTH / 2 - eyeSpacing, eyeY, eyeSize, 0, Math.PI * 2); // Left eye
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(gnome.x + GNOME_WIDTH / 2 + eyeSpacing, eyeY, eyeSize, 0, Math.PI * 2); // Right eye
+        ctx.fill();
+
+        // Angry Eyebrows (slanted lines)
+        ctx.strokeStyle = GNOME_COLOR_EYES;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(gnome.x + GNOME_WIDTH / 2 - eyeSpacing * 1.8, eyebrowY + 2); // Left eyebrow outer
+        ctx.lineTo(gnome.x + GNOME_WIDTH / 2 - eyeSpacing * 0.8, eyebrowY);     // Left eyebrow inner
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(gnome.x + GNOME_WIDTH / 2 + eyeSpacing * 0.8, eyebrowY);     // Right eyebrow inner
+        ctx.lineTo(gnome.x + GNOME_WIDTH / 2 + eyeSpacing * 1.8, eyebrowY + 2); // Right eyebrow outer
+        ctx.stroke();
+        ctx.lineWidth = 1; // Reset line width
     });
 }
 
@@ -249,7 +288,7 @@ function spawnObstaclePair() {
 // Function to update obstacle positions and handle scoring - No Change
 function updateObstacles(deltaTime) {
     for (let i = obstacles.length - 1; i >= 0; i--) {
-        obstacles[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime;
+        obstacles[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime; // Uses updated constant
         if (!obstacles[i].passed && obstacles[i].x + OBSTACLE_WIDTH < ship.x) {
             score++;
             scoreDisplay.textContent = `Score: ${score}`;
@@ -271,7 +310,7 @@ function updateObstacles(deltaTime) {
 // Function to update coin positions and check collection - No Change
 function updateCoins(deltaTime) {
     for (let i = coins.length - 1; i >= 0; i--) {
-        coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime;
+        coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime; // Uses updated constant
         const shipLeft = ship.x - ship.width / 2; const shipRight = ship.x + ship.width / 2;
         const shipTop = shipY - ship.height / 2; const shipBottom = shipY + ship.height / 2;
         const coin = coins[i];
@@ -288,52 +327,29 @@ function updateCoins(deltaTime) {
     }
 }
 
-// *** Function to spawn a gnome - UPDATED Y Position ***
+// Function to spawn a gnome - No Change
 function spawnGnome() {
     const gnomeX = CANVAS_WIDTH;
-    // Spawn at a random height, ensuring space from top/bottom edges
-    const spawnPadding = GNOME_HEIGHT * 1.5; // Ensure gnome fully visible
+    const spawnPadding = GNOME_HEIGHT * 1.5;
     const gnomeY = Math.random() * (CANVAS_HEIGHT - spawnPadding * 2) + spawnPadding;
-
-    gnomes.push({
-        x: gnomeX,
-        y: gnomeY, // Current y
-        initialY: gnomeY, // Store initial y for sine wave
-        width: GNOME_WIDTH,
-        height: GNOME_HEIGHT
-    });
+    gnomes.push({ x: gnomeX, y: gnomeY, initialY: gnomeY, width: GNOME_WIDTH, height: GNOME_HEIGHT });
     console.log("Gnome spawned at y:", gnomeY);
-    // Reset gnome spawn timer
     gnomeSpawnTimer = GNOME_SPAWN_INTERVAL_MIN_MS + Math.random() * GNOME_SPAWN_INTERVAL_RANGE_MS;
 }
 
-// *** Function to update gnome positions - UPDATED with Vertical Movement ***
+// Function to update gnome positions - No Change
 function updateGnomes(deltaTime) {
     for (let i = gnomes.length - 1; i >= 0; i--) {
         const gnome = gnomes[i];
-        // Horizontal movement
         gnome.x -= GNOME_SPEED_PER_SECOND * deltaTime;
-
-        // Vertical movement (sine wave based on horizontal position)
         gnome.y = gnome.initialY + Math.sin(gnome.x * GNOME_VERTICAL_FREQ) * GNOME_VERTICAL_AMP;
-
-        // Keep gnome within vertical bounds (optional, prevents extreme waves)
         if (gnome.y < 0) gnome.y = 0;
         if (gnome.y + GNOME_HEIGHT > CANVAS_HEIGHT) gnome.y = CANVAS_HEIGHT - GNOME_HEIGHT;
-
-
-        // Remove gnomes that are off-screen
-        if (gnome.x + GNOME_WIDTH < 0) {
-            gnomes.splice(i, 1);
-        }
+        if (gnome.x + GNOME_WIDTH < 0) { gnomes.splice(i, 1); }
     }
-
-     // Update and check spawn timer
     if (typeof gnomeSpawnTimer === 'number') {
         gnomeSpawnTimer -= deltaTime * 1000;
-        if (gnomeSpawnTimer <= 0) {
-            spawnGnome();
-        }
+        if (gnomeSpawnTimer <= 0) { spawnGnome(); }
     }
 }
 
@@ -405,17 +421,16 @@ function initializeStars() {
     }
 }
 
-// MODIFIED resetGame to initialize gnomes and gnome timer, ensure music restarts
+// MODIFIED resetGame to ensure music restarts correctly
 function resetGame() {
     console.log("Executing resetGame function");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     coins = [];
-    gnomes = []; // Initialize gnomes array
+    gnomes = [];
     score = 0;
     obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2;
-    // Initialize gnome timer
     gnomeSpawnTimer = GNOME_SPAWN_INTERVAL_MIN_MS + Math.random() * GNOME_SPAWN_INTERVAL_RANGE_MS;
     gameRunning = true;
     gameStarted = true;
@@ -430,12 +445,18 @@ function resetGame() {
 
     initializeStars();
 
-    // *** Start/Restart music ***
+    // *** Start/Restart music - UPDATED Logic ***
     if (typeof Tone !== 'undefined') {
-        console.log("Transport state before reset:", Tone.Transport.state); // Log state
-        // Always ensure transport is started and loop begins from time 0
-        Tone.Transport.start();
-        musicLoop.start(0); // Restart sequence from beginning
+        console.log("Transport state before reset:", Tone.Transport.state);
+        // Stop and cancel any previous events, set position to 0
+        Tone.Transport.stop();
+        Tone.Transport.cancel(0); // Cancel events scheduled after time 0
+        Tone.Transport.position = 0; // Reset transport time to 0
+        musicLoop.stop(0); // Ensure sequence is stopped before restarting
+
+        // Start transport and loop
+        Tone.Transport.start("+0.1"); // Start transport slightly ahead
+        musicLoop.start(0); // Schedule sequence to start at time 0
         console.log("Music (re)started.");
     }
 
@@ -444,53 +465,29 @@ function resetGame() {
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Game Loop --- MODIFIED to update/draw gnomes
+// --- Game Loop --- No Change
 function gameLoop(currentTime) {
-    if (!gameRunning) {
-         return;
-    }
-
-    if (lastTime === 0) {
-        lastTime = currentTime;
-        animationFrameId = requestAnimationFrame(gameLoop);
-        return;
-    }
+    if (!gameRunning) { return; }
+    if (lastTime === 0) { lastTime = currentTime; animationFrameId = requestAnimationFrame(gameLoop); return; }
     const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
+    if (deltaTime > 0.1) { animationFrameId = requestAnimationFrame(gameLoop); return; }
 
-    if (deltaTime > 0.1) {
-         animationFrameId = requestAnimationFrame(gameLoop);
-         return;
-    }
+    updateBackground(deltaTime); updateShip(deltaTime); updateObstacles(deltaTime);
+    updateCoins(deltaTime); updateGnomes(deltaTime);
 
-    // --- Updates based on deltaTime ---
-    updateBackground(deltaTime);
-    updateShip(deltaTime);
-    updateObstacles(deltaTime);
-    updateCoins(deltaTime);
-    updateGnomes(deltaTime); // *** Update gnomes ***
-
-    // --- Drawing ---
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    drawBackground();
-    drawObstacles();
-    drawCoins();
-    drawGnomes(); // *** Draw gnomes ***
-    drawShip(); // Draw ship last (on top)
+    drawBackground(); drawObstacles(); drawCoins(); drawGnomes(); drawShip();
 
-    // --- Collision Check ---
-    if (checkCollisions()) { // Now checks obstacles AND gnomes
-        gameOver();
-    }
+    if (checkCollisions()) { gameOver(); }
 
-    // --- Request Next Frame ---
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
 // --- Input Handling --- No Change from previous
 // ... (triggerFlap, handleFlapAction, handleKeyDown, handleTouchStart, handleClick, handleRestart, handleSubmitScore, handleNameSubmitKey remain the same) ...
 function triggerFlap() { if (typeof Tone !== 'undefined' && !audioStarted) { Tone.start().then(() => { audioStarted = true; console.log("Audio Context Started"); handleFlapAction(); }).catch(e => { console.error("Error starting Audio Context:", e); handleFlapAction(); }); } else { handleFlapAction(); } }
-function handleFlapAction() { if (!gameStarted) { resetGame(); if (audioStarted) flapSynth.triggerAttackRelease("C4", "0.05"); } else if (gameRunning) { shipVelocityY = FLAP_VELOCITY; if (audioStarted) flapSynth.triggerAttackRelease("C5", "0.05"); } }
+function handleFlapAction() { if (!gameStarted) { resetGame(); if (audioStarted) flapSynth.triggerAttackRelease("C4", "0.05"); } else if (gameRunning) { shipVelocityY = FLAP_VELOCITY; if (audioStarted) flapSynth.triggerAttackRelease("C5", "0.05"); } } // Uses updated constant
 function handleKeyDown(e) { if (e.code === 'Space') { e.preventDefault(); triggerFlap(); } }
 function handleTouchStart(e) { e.preventDefault(); triggerFlap(); }
 function handleClick(e) { e.preventDefault(); triggerFlap(); }
@@ -499,48 +496,23 @@ function handleSubmitScore() { const playerName = playerNameInput.value; if (pla
 function handleNameSubmitKey(e) { if (e.code === 'Enter') { e.preventDefault(); handleSubmitScore(); } }
 
 
-// --- Initial Setup --- MODIFIED to initialize gnomes array
+// --- Initial Setup --- No Change
 function initializeDisplay() {
     console.log("Initializing display...");
-    shipY = SHIP_START_Y;
-    shipVelocityY = 0;
-    obstacles = [];
-    coins = [];
-    gnomes = []; // *** Initialize gnomes array ***
-    score = 0;
-    gameRunning = false;
-    gameStarted = false;
-    currentHighScore = false;
-    lastTime = 0;
-    audioStarted = false;
-
+    shipY = SHIP_START_Y; shipVelocityY = 0; obstacles = []; coins = []; gnomes = []; score = 0;
+    gameRunning = false; gameStarted = false; currentHighScore = false; lastTime = 0; audioStarted = false;
     initializeStars();
-
     if (!ctx) { console.error("Canvas context (ctx) is not available!"); return; }
     if (!canvas) { console.error("Canvas element not found!"); return; }
-
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    drawBackground();
-    drawShip();
-
-    startMessage.classList.remove('hidden');
-    gameOverDisplay.classList.add('hidden');
-    nameInputArea.classList.add('hidden');
-    scoreDisplay.textContent = `Score: 0`;
-
-    displayLeaderboard();
-
-    // Add event listeners only once during initialization
-    window.removeEventListener('keydown', handleKeyDown);
-    window.addEventListener('keydown', handleKeyDown);
-    canvas.removeEventListener('touchstart', handleTouchStart);
-    canvas.addEventListener('touchstart', handleTouchStart);
-    canvas.removeEventListener('click', handleClick);
-    canvas.addEventListener('click', handleClick);
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); drawBackground(); drawShip();
+    startMessage.classList.remove('hidden'); gameOverDisplay.classList.add('hidden'); nameInputArea.classList.add('hidden');
+    scoreDisplay.textContent = `Score: 0`; displayLeaderboard();
+    window.removeEventListener('keydown', handleKeyDown); window.addEventListener('keydown', handleKeyDown);
+    canvas.removeEventListener('touchstart', handleTouchStart); canvas.addEventListener('touchstart', handleTouchStart);
+    canvas.removeEventListener('click', handleClick); canvas.addEventListener('click', handleClick);
     if (restartButton) { restartButton.removeEventListener('click', handleRestart); restartButton.addEventListener('click', handleRestart); } else { console.error("Restart button not found!"); }
     if (submitScoreButton) { submitScoreButton.removeEventListener('click', handleSubmitScore); submitScoreButton.addEventListener('click', handleSubmitScore); } else { console.error("Submit score button not found!"); }
     if (playerNameInput) { playerNameInput.removeEventListener('keydown', handleNameSubmitKey); playerNameInput.addEventListener('keydown', handleNameSubmitKey); } else { console.error("Player name input not found!"); }
-
     console.log("Initialization complete. Waiting for first input.");
 }
 
