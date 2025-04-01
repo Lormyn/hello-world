@@ -18,7 +18,7 @@ const submitScoreButton = document.getElementById('submit-score-button');
 // --- Game Constants ---
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
-// Ship Constants - Adjusted slightly for new shape
+// Ship Constants
 const SHIP_WIDTH = 45;
 const SHIP_HEIGHT = 25;
 const SHIP_START_X = 150;
@@ -44,13 +44,16 @@ const COIN_COLOR = '#ffd700';
 const COIN_SCORE = 5;
 const COIN_SPAWN_CHANCE = 0.7;
 // *** Gnome Constants ***
-const GNOME_WIDTH = 25;
-const GNOME_HEIGHT = 40;
-const GNOME_COLOR_BODY = '#006400'; // DarkGreen
-const GNOME_COLOR_HAT = '#ff0000'; // Red
-const GNOME_SPEED_PER_SECOND = 210; // Slightly faster than obstacles
-const GNOME_SPAWN_INTERVAL_MIN_MS = 4000; // Min time between gnomes
-const GNOME_SPAWN_INTERVAL_RANGE_MS = 5000; // Random additional time
+const GNOME_WIDTH = 30; // Slightly wider for rounded look
+const GNOME_HEIGHT = 45; // Slightly taller
+const GNOME_COLOR_BODY = '#228B22'; // ForestGreen
+const GNOME_COLOR_HAT = '#DC143C'; // Crimson Red
+const GNOME_COLOR_BEARD = '#FFFFFF'; // White
+const GNOME_SPEED_PER_SECOND = 210;
+const GNOME_SPAWN_INTERVAL_MIN_MS = 4000;
+const GNOME_SPAWN_INTERVAL_RANGE_MS = 5000;
+const GNOME_VERTICAL_AMP = 25; // How much gnome moves up/down
+const GNOME_VERTICAL_FREQ = 0.01; // How fast gnome moves up/down relative to x pos
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -61,10 +64,10 @@ let shipY;
 let shipVelocityY;
 let obstacles;
 let coins;
-let gnomes; // *** Array for gnomes ***
+let gnomes;
 let score;
 let obstacleSpawnTimer;
-let gnomeSpawnTimer; // *** Timer for gnomes ***
+let gnomeSpawnTimer;
 let gameRunning;
 let gameStarted;
 let animationFrameId;
@@ -77,20 +80,19 @@ let musicLoop;
 // --- Spaceship Object ---
 const ship = {
     x: SHIP_START_X,
-    width: SHIP_WIDTH, // Base width
-    height: SHIP_HEIGHT, // Base height
-    // Colors for spaceship
-    bodyColor1: '#e0e0e0', // Lighter grey
-    bodyColor2: '#a0a0a0', // Darker grey
-    windowColor: '#70d0ff', // Light blue
-    flameColor1: '#ffcc00', // Yellow
-    flameColor2: '#ff4500'  // OrangeRed
+    width: SHIP_WIDTH,
+    height: SHIP_HEIGHT,
+    bodyColor1: '#e0e0e0',
+    bodyColor2: '#a0a0a0',
+    windowColor: '#70d0ff',
+    flameColor1: '#ffcc00',
+    flameColor2: '#ff4500'
 };
 
 // --- Sound Effects & Music (Tone.js) ---
 let flapSynth, coinSynth, musicSynth, reverb, filter;
-// ... (sound setup remains the same as previous version) ...
 if (typeof Tone !== 'undefined') {
+    // ... (sound setup remains the same) ...
     flapSynth = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.1 } }).toDestination();
     coinSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 } }).toDestination();
     reverb = new Tone.Reverb({ decay: 4, wet: 0.4 }).toDestination();
@@ -130,68 +132,28 @@ function updateBackground(deltaTime) {
     });
 }
 
-// *** Function to draw the spaceship - UPDATED Appearance ***
+// Function to draw the spaceship - No Change
 function drawShip() {
-    const x = ship.x; // Center X reference
-    const y = shipY; // Center Y reference (vertical center of the drawn shape)
-    const w = ship.width;
-    const h = ship.height;
-
-    // Main Body - create a gradient
+    const x = ship.x; const y = shipY; const w = ship.width; const h = ship.height;
     const gradient = ctx.createLinearGradient(x - w/2, y - h/2, x - w/2, y + h/2);
-    gradient.addColorStop(0, ship.bodyColor1); // Lighter top
-    gradient.addColorStop(1, ship.bodyColor2); // Darker bottom
+    gradient.addColorStop(0, ship.bodyColor1); gradient.addColorStop(1, ship.bodyColor2);
     ctx.fillStyle = gradient;
-
-    ctx.beginPath();
-    // Nose cone (quadratic curve for smoother point)
-    ctx.moveTo(x + w / 2, y); // Tip of the nose
-    ctx.quadraticCurveTo(x + w / 4, y - h / 2, x - w / 4, y - h / 2); // Top curve to back
-    // Tail fins (example)
-    ctx.lineTo(x - w / 2, y - h * 0.8); // Upper tail fin point
-    ctx.lineTo(x - w * 0.6, y);      // Back center indent
-    ctx.lineTo(x - w / 2, y + h * 0.8); // Lower tail fin point
-    // Bottom curve back to nose
-    ctx.lineTo(x - w / 4, y + h / 2); // Bottom back
-    ctx.quadraticCurveTo(x + w / 4, y + h / 2, x + w / 2, y); // Bottom curve to nose
-    ctx.closePath();
-    ctx.fill();
-    // Optional: Add a border
-    // ctx.strokeStyle = '#333';
-    // ctx.lineWidth = 1;
-    // ctx.stroke();
-
-    // Cockpit Window
-    ctx.fillStyle = ship.windowColor;
-    ctx.beginPath();
-    // Slightly elongated oval shape
-    ctx.ellipse(x + w * 0.1, y, w * 0.2, h * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Simple shine on window
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.beginPath();
-    ctx.arc(x + w * 0.15, y - h * 0.05, w * 0.05, 0, Math.PI * 2);
-    ctx.fill();
-
-
-    // Flame when flapping/moving up
+    ctx.beginPath(); ctx.moveTo(x + w / 2, y);
+    ctx.quadraticCurveTo(x + w / 4, y - h / 2, x - w / 4, y - h / 2);
+    ctx.lineTo(x - w / 2, y - h * 0.8); ctx.lineTo(x - w * 0.6, y); ctx.lineTo(x - w / 2, y + h * 0.8);
+    ctx.lineTo(x - w / 4, y + h / 2); ctx.quadraticCurveTo(x + w / 4, y + h / 2, x + w / 2, y);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = ship.windowColor; ctx.beginPath();
+    ctx.ellipse(x + w * 0.1, y, w * 0.2, h * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; ctx.beginPath();
+    ctx.arc(x + w * 0.15, y - h * 0.05, w * 0.05, 0, Math.PI * 2); ctx.fill();
     if (shipVelocityY < -50) {
-        // Inner flame (yellow)
-        ctx.fillStyle = ship.flameColor1;
-        ctx.beginPath();
-        ctx.moveTo(x - w * 0.55, y - h * 0.3); // Start slightly behind body edge
-        ctx.lineTo(x - w, y); // Longer point
-        ctx.lineTo(x - w * 0.55, y + h * 0.3);
-        ctx.closePath();
-        ctx.fill();
-        // Outer flame (orange)
-        ctx.fillStyle = ship.flameColor2;
-        ctx.beginPath();
-        ctx.moveTo(x - w * 0.6, y - h * 0.4);
-        ctx.lineTo(x - w * 0.8, y); // Shorter point
-        ctx.lineTo(x - w * 0.6, y + h * 0.4);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillStyle = ship.flameColor1; ctx.beginPath();
+        ctx.moveTo(x - w * 0.55, y - h * 0.3); ctx.lineTo(x - w, y); ctx.lineTo(x - w * 0.55, y + h * 0.3);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = ship.flameColor2; ctx.beginPath();
+        ctx.moveTo(x - w * 0.6, y - h * 0.4); ctx.lineTo(x - w * 0.8, y); ctx.lineTo(x - w * 0.6, y + h * 0.4);
+        ctx.closePath(); ctx.fill();
     }
 }
 
@@ -214,18 +176,41 @@ function drawCoins() {
     });
 }
 
-// *** Function to draw gnomes ***
+// *** Function to draw gnomes - UPDATED Appearance ***
 function drawGnomes() {
     gnomes.forEach(gnome => {
-        // Body
+        const bodyHeight = GNOME_HEIGHT * 0.6;
+        const bodyY = gnome.y + GNOME_HEIGHT * 0.4;
+        const headRadius = GNOME_WIDTH * 0.3;
+        const hatHeight = GNOME_HEIGHT * 0.4;
+        const hatPointY = gnome.y;
+        const hatBaseY = gnome.y + hatHeight;
+
+        // Beard (draw first, behind body/hat)
+        ctx.fillStyle = GNOME_COLOR_BEARD;
+        ctx.beginPath();
+        ctx.moveTo(gnome.x + GNOME_WIDTH * 0.1, hatBaseY);
+        ctx.quadraticCurveTo(gnome.x + GNOME_WIDTH / 2, bodyY + bodyHeight * 0.5, gnome.x + GNOME_WIDTH * 0.9, hatBaseY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Body (rounded rectangle/capsule)
         ctx.fillStyle = GNOME_COLOR_BODY;
-        ctx.fillRect(gnome.x, gnome.y + GNOME_HEIGHT * 0.3, GNOME_WIDTH, GNOME_HEIGHT * 0.7);
-        // Hat
+        ctx.beginPath();
+        ctx.moveTo(gnome.x, bodyY);
+        ctx.lineTo(gnome.x, bodyY + bodyHeight - GNOME_WIDTH / 2); // Left side
+        ctx.arcTo(gnome.x, bodyY + bodyHeight, gnome.x + GNOME_WIDTH / 2, bodyY + bodyHeight, GNOME_WIDTH / 2); // Bottom curve
+        ctx.arcTo(gnome.x + GNOME_WIDTH, bodyY + bodyHeight, gnome.x + GNOME_WIDTH, bodyY, GNOME_WIDTH / 2); // Right curve
+        ctx.lineTo(gnome.x + GNOME_WIDTH, bodyY); // Right side
+        ctx.closePath(); // Close top (will be covered by hat/beard)
+        ctx.fill();
+
+        // Hat (smoother triangle)
         ctx.fillStyle = GNOME_COLOR_HAT;
         ctx.beginPath();
-        ctx.moveTo(gnome.x, gnome.y + GNOME_HEIGHT * 0.3); // Left base of hat
-        ctx.lineTo(gnome.x + GNOME_WIDTH / 2, gnome.y); // Point of hat
-        ctx.lineTo(gnome.x + GNOME_WIDTH, gnome.y + GNOME_HEIGHT * 0.3); // Right base of hat
+        ctx.moveTo(gnome.x, hatBaseY); // Left base
+        ctx.quadraticCurveTo(gnome.x + GNOME_WIDTH / 2, hatPointY - hatHeight * 0.2, gnome.x + GNOME_WIDTH, hatBaseY); // Curved top to right base
+        ctx.quadraticCurveTo(gnome.x + GNOME_WIDTH / 2, hatBaseY + hatHeight * 0.1, gnome.x, hatBaseY); // Curved bottom back to left base
         ctx.closePath();
         ctx.fill();
     });
@@ -287,49 +272,58 @@ function updateObstacles(deltaTime) {
 function updateCoins(deltaTime) {
     for (let i = coins.length - 1; i >= 0; i--) {
         coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime;
-
-        const shipLeft = ship.x - ship.width / 2;
-        const shipRight = ship.x + ship.width / 2;
-        const shipTop = shipY - ship.height / 2;
-        const shipBottom = shipY + ship.height / 2;
+        const shipLeft = ship.x - ship.width / 2; const shipRight = ship.x + ship.width / 2;
+        const shipTop = shipY - ship.height / 2; const shipBottom = shipY + ship.height / 2;
         const coin = coins[i];
         const closestX = Math.max(shipLeft, Math.min(coin.x, shipRight));
         const closestY = Math.max(shipTop, Math.min(coin.y, shipBottom));
-        const distX = coin.x - closestX;
-        const distY = coin.y - closestY;
+        const distX = coin.x - closestX; const distY = coin.y - closestY;
         const distanceSquared = (distX * distX) + (distY * distY);
-
         if (distanceSquared < (COIN_RADIUS * COIN_RADIUS)) {
-            score += COIN_SCORE;
-            scoreDisplay.textContent = `Score: ${score}`;
+            score += COIN_SCORE; scoreDisplay.textContent = `Score: ${score}`;
             if (audioStarted) coinSynth.triggerAttackRelease("A5", "0.1");
-            coins.splice(i, 1);
-            continue;
+            coins.splice(i, 1); continue;
         }
-
-        if (coin.x + COIN_RADIUS < 0) {
-            coins.splice(i, 1);
-        }
+        if (coin.x + COIN_RADIUS < 0) { coins.splice(i, 1); }
     }
 }
 
-// *** Function to spawn a gnome ***
+// *** Function to spawn a gnome - UPDATED Y Position ***
 function spawnGnome() {
     const gnomeX = CANVAS_WIDTH;
-    const gnomeY = CANVAS_HEIGHT - GNOME_HEIGHT; // Gnome sits on the ground
-    gnomes.push({ x: gnomeX, y: gnomeY, width: GNOME_WIDTH, height: GNOME_HEIGHT });
-    console.log("Gnome spawned!");
+    // Spawn at a random height, ensuring space from top/bottom edges
+    const spawnPadding = GNOME_HEIGHT * 1.5; // Ensure gnome fully visible
+    const gnomeY = Math.random() * (CANVAS_HEIGHT - spawnPadding * 2) + spawnPadding;
+
+    gnomes.push({
+        x: gnomeX,
+        y: gnomeY, // Current y
+        initialY: gnomeY, // Store initial y for sine wave
+        width: GNOME_WIDTH,
+        height: GNOME_HEIGHT
+    });
+    console.log("Gnome spawned at y:", gnomeY);
     // Reset gnome spawn timer
     gnomeSpawnTimer = GNOME_SPAWN_INTERVAL_MIN_MS + Math.random() * GNOME_SPAWN_INTERVAL_RANGE_MS;
 }
 
-// *** Function to update gnome positions ***
+// *** Function to update gnome positions - UPDATED with Vertical Movement ***
 function updateGnomes(deltaTime) {
     for (let i = gnomes.length - 1; i >= 0; i--) {
-        gnomes[i].x -= GNOME_SPEED_PER_SECOND * deltaTime; // Move gnome left
+        const gnome = gnomes[i];
+        // Horizontal movement
+        gnome.x -= GNOME_SPEED_PER_SECOND * deltaTime;
+
+        // Vertical movement (sine wave based on horizontal position)
+        gnome.y = gnome.initialY + Math.sin(gnome.x * GNOME_VERTICAL_FREQ) * GNOME_VERTICAL_AMP;
+
+        // Keep gnome within vertical bounds (optional, prevents extreme waves)
+        if (gnome.y < 0) gnome.y = 0;
+        if (gnome.y + GNOME_HEIGHT > CANVAS_HEIGHT) gnome.y = CANVAS_HEIGHT - GNOME_HEIGHT;
+
 
         // Remove gnomes that are off-screen
-        if (gnomes[i].x + GNOME_WIDTH < 0) {
+        if (gnome.x + GNOME_WIDTH < 0) {
             gnomes.splice(i, 1);
         }
     }
@@ -344,43 +338,24 @@ function updateGnomes(deltaTime) {
 }
 
 
-// Function to check for collisions between ship and obstacles/gnomes - MODIFIED
+// Function to check for collisions between ship and obstacles/gnomes - No Change
 function checkCollisions() {
     // Check Obstacle Collisions
     for (const pair of obstacles) {
-        // Simple AABB check (using ship center and dimensions for approximation)
-        const shipLeft = ship.x - ship.width / 2;
-        const shipRight = ship.x + ship.width / 2;
-        const shipTop = shipY - ship.height / 2;
-        const shipBottom = shipY + ship.height / 2;
-
-        // Check collision with top obstacle
-        if (shipRight > pair.x && shipLeft < pair.x + OBSTACLE_WIDTH && shipTop < pair.topHeight) {
-            return true; // Collision with top part
-        }
-        // Check collision with bottom obstacle
-        if (shipRight > pair.x && shipLeft < pair.x + OBSTACLE_WIDTH && shipBottom > pair.bottomY) {
-            return true; // Collision with bottom part
-        }
+        const shipLeft = ship.x - ship.width / 2; const shipRight = ship.x + ship.width / 2;
+        const shipTop = shipY - ship.height / 2; const shipBottom = shipY + ship.height / 2;
+        if (shipRight > pair.x && shipLeft < pair.x + OBSTACLE_WIDTH && shipTop < pair.topHeight) return true;
+        if (shipRight > pair.x && shipLeft < pair.x + OBSTACLE_WIDTH && shipBottom > pair.bottomY) return true;
     }
-
-    // *** Check Gnome Collisions ***
+    // Check Gnome Collisions
     for (const gnome of gnomes) {
-        const shipLeft = ship.x - ship.width / 2;
-        const shipRight = ship.x + ship.width / 2;
-        const shipTop = shipY - ship.height / 2;
-        const shipBottom = shipY + ship.height / 2;
-
-        if (shipRight > gnome.x &&
-            shipLeft < gnome.x + gnome.width &&
-            shipBottom > gnome.y &&
-            shipTop < gnome.y + gnome.height) {
-            console.log("Gnome collision!");
-            return true; // Collision with gnome
+        const shipLeft = ship.x - ship.width / 2; const shipRight = ship.x + ship.width / 2;
+        const shipTop = shipY - ship.height / 2; const shipBottom = shipY + ship.height / 2;
+        if (shipRight > gnome.x && shipLeft < gnome.x + gnome.width && shipBottom > gnome.y && shipTop < gnome.y + gnome.height) {
+            console.log("Gnome collision!"); return true;
         }
     }
-
-    return false; // No collision
+    return false;
 }
 
 // --- Leaderboard Functions --- No Change
@@ -430,17 +405,17 @@ function initializeStars() {
     }
 }
 
-// MODIFIED resetGame to initialize gnomes and gnome timer
+// MODIFIED resetGame to initialize gnomes and gnome timer, ensure music restarts
 function resetGame() {
     console.log("Executing resetGame function");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     coins = [];
-    gnomes = []; // *** Initialize gnomes array ***
+    gnomes = []; // Initialize gnomes array
     score = 0;
     obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2;
-    // *** Initialize gnome timer ***
+    // Initialize gnome timer
     gnomeSpawnTimer = GNOME_SPAWN_INTERVAL_MIN_MS + Math.random() * GNOME_SPAWN_INTERVAL_RANGE_MS;
     gameRunning = true;
     gameStarted = true;
@@ -455,10 +430,13 @@ function resetGame() {
 
     initializeStars();
 
-    if (typeof Tone !== 'undefined' && Tone.Transport.state !== "started") {
-         Tone.Transport.start();
-         musicLoop.start(0);
-         console.log("Music started.");
+    // *** Start/Restart music ***
+    if (typeof Tone !== 'undefined') {
+        console.log("Transport state before reset:", Tone.Transport.state); // Log state
+        // Always ensure transport is started and loop begins from time 0
+        Tone.Transport.start();
+        musicLoop.start(0); // Restart sequence from beginning
+        console.log("Music (re)started.");
     }
 
     cancelAnimationFrame(animationFrameId);
