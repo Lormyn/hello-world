@@ -18,19 +18,20 @@ const submitScoreButton = document.getElementById('submit-score-button');
 // --- Game Constants ---
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
-const SHIP_WIDTH = 40;
-const SHIP_HEIGHT = 30;
+// Ship Constants - Adjusted slightly for new shape
+const SHIP_WIDTH = 45;
+const SHIP_HEIGHT = 25;
 const SHIP_START_X = 150;
 const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
 // Physics Constants
 const GRAVITY_PER_SECOND = 900;
-const FLAP_VELOCITY = -250;
+const FLAP_VELOCITY = -280;
 // Obstacle Constants
 const OBSTACLE_WIDTH = 80;
 const OBSTACLE_GAP = 120;
 const OBSTACLE_COLOR = '#8b4513';
-const OBSTACLE_SPEED_PER_SECOND = 360;
-const OBSTACLE_SPAWN_INTERVAL_MS = 1800;
+const OBSTACLE_SPEED_PER_SECOND = 180;
+const OBSTACLE_SPAWN_INTERVAL_MS = 2000;
 // Background Constants
 const STAR_COUNT = 100;
 const STAR_BASE_SPEED_PER_SECOND = 30;
@@ -38,10 +39,18 @@ const STAR_BASE_SPEED_PER_SECOND = 30;
 const LEADERBOARD_KEY = 'flappyShipLeaderboard';
 const LEADERBOARD_MAX_ENTRIES = 10;
 // Coin Constants
-const COIN_RADIUS = 10;
+const COIN_RADIUS = 15;
 const COIN_COLOR = '#ffd700';
 const COIN_SCORE = 5;
 const COIN_SPAWN_CHANCE = 0.7;
+// *** Gnome Constants ***
+const GNOME_WIDTH = 25;
+const GNOME_HEIGHT = 40;
+const GNOME_COLOR_BODY = '#006400'; // DarkGreen
+const GNOME_COLOR_HAT = '#ff0000'; // Red
+const GNOME_SPEED_PER_SECOND = 210; // Slightly faster than obstacles
+const GNOME_SPAWN_INTERVAL_MIN_MS = 4000; // Min time between gnomes
+const GNOME_SPAWN_INTERVAL_RANGE_MS = 5000; // Random additional time
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -52,8 +61,10 @@ let shipY;
 let shipVelocityY;
 let obstacles;
 let coins;
+let gnomes; // *** Array for gnomes ***
 let score;
 let obstacleSpawnTimer;
+let gnomeSpawnTimer; // *** Timer for gnomes ***
 let gameRunning;
 let gameStarted;
 let animationFrameId;
@@ -61,64 +72,36 @@ let stars;
 let currentHighScore = false;
 let lastTime = 0;
 let audioStarted = false;
-let musicLoop; // *** Variable to hold the music sequence ***
+let musicLoop;
 
 // --- Spaceship Object ---
 const ship = {
     x: SHIP_START_X,
-    width: SHIP_WIDTH,
-    height: SHIP_HEIGHT,
-    bodyColor: '#c0c0c0',
-    windowColor: '#00ffff',
-    flameColor: '#ff4500'
+    width: SHIP_WIDTH, // Base width
+    height: SHIP_HEIGHT, // Base height
+    // Colors for spaceship
+    bodyColor1: '#e0e0e0', // Lighter grey
+    bodyColor2: '#a0a0a0', // Darker grey
+    windowColor: '#70d0ff', // Light blue
+    flameColor1: '#ffcc00', // Yellow
+    flameColor2: '#ff4500'  // OrangeRed
 };
 
 // --- Sound Effects & Music (Tone.js) ---
-// Ensure Tone is loaded before creating instances
 let flapSynth, coinSynth, musicSynth, reverb, filter;
+// ... (sound setup remains the same as previous version) ...
 if (typeof Tone !== 'undefined') {
-    flapSynth = new Tone.Synth({
-        oscillator: { type: 'triangle' },
-        envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.1 }
-    }).toDestination();
-
-    coinSynth = new Tone.Synth({
-        oscillator: { type: 'sine' },
-        envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 }
-    }).toDestination();
-
-    // *** Setup for spacey music ***
-    reverb = new Tone.Reverb({
-        decay: 4, // Longer decay for spacey feel
-        wet: 0.4  // Mix of dry/wet signal
-    }).toDestination();
-
-    filter = new Tone.Filter({
-        type: 'lowpass',
-        frequency: 800, // Cut off high frequencies for softer sound
-        Q: 1
-    }); //.connect(reverb); // Chain filter to reverb
-
-    // Use FMSynth for potentially richer/spacey tones
-    musicSynth = new Tone.FMSynth({
-        harmonicity: 1.5,
-        modulationIndex: 10,
-        envelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 1 },
-        modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.2, release: 0.5 }
-    }).connect(filter).connect(reverb); // Connect synth through filter and reverb
-
-    // Define the musical sequence (simple C minor arpeggio)
+    flapSynth = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.1 } }).toDestination();
+    coinSynth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 } }).toDestination();
+    reverb = new Tone.Reverb({ decay: 4, wet: 0.4 }).toDestination();
+    filter = new Tone.Filter({ type: 'lowpass', frequency: 800, Q: 1 });
+    musicSynth = new Tone.FMSynth({ harmonicity: 1.5, modulationIndex: 10, envelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 1 }, modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.2, release: 0.5 } }).connect(filter).connect(reverb);
     const musicPattern = ["C3", ["Eb3", "G3"], "C3", ["G2", "Eb3"]];
-    musicLoop = new Tone.Sequence((time, note) => {
-        musicSynth.triggerAttackRelease(note, "8n", time); // Play note for an 8th note duration
-    }, musicPattern, "4n"); // Play pattern notes every quarter note
-
-    musicLoop.loop = true; // Ensure the sequence loops
-    Tone.Transport.bpm.value = 90; // Set tempo
-
+    musicLoop = new Tone.Sequence((time, note) => { musicSynth.triggerAttackRelease(note, "8n", time); }, musicPattern, "4n");
+    musicLoop.loop = true;
+    Tone.Transport.bpm.value = 90;
 } else {
     console.error("Tone.js not loaded! Sound effects and music will not work.");
-    // Provide dummy objects/functions if needed to prevent errors later
     flapSynth = coinSynth = musicSynth = { triggerAttackRelease: () => {} };
     musicLoop = { start: () => {}, stop: () => {} };
 }
@@ -147,25 +130,66 @@ function updateBackground(deltaTime) {
     });
 }
 
-// Function to draw the spaceship - No Change
+// *** Function to draw the spaceship - UPDATED Appearance ***
 function drawShip() {
-    ctx.fillStyle = ship.bodyColor;
+    const x = ship.x; // Center X reference
+    const y = shipY; // Center Y reference (vertical center of the drawn shape)
+    const w = ship.width;
+    const h = ship.height;
+
+    // Main Body - create a gradient
+    const gradient = ctx.createLinearGradient(x - w/2, y - h/2, x - w/2, y + h/2);
+    gradient.addColorStop(0, ship.bodyColor1); // Lighter top
+    gradient.addColorStop(1, ship.bodyColor2); // Darker bottom
+    ctx.fillStyle = gradient;
+
     ctx.beginPath();
-    ctx.moveTo(ship.x, shipY + ship.height / 2);
-    ctx.lineTo(ship.x - ship.width / 2, shipY - ship.height / 2);
-    ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height / 2);
+    // Nose cone (quadratic curve for smoother point)
+    ctx.moveTo(x + w / 2, y); // Tip of the nose
+    ctx.quadraticCurveTo(x + w / 4, y - h / 2, x - w / 4, y - h / 2); // Top curve to back
+    // Tail fins (example)
+    ctx.lineTo(x - w / 2, y - h * 0.8); // Upper tail fin point
+    ctx.lineTo(x - w * 0.6, y);      // Back center indent
+    ctx.lineTo(x - w / 2, y + h * 0.8); // Lower tail fin point
+    // Bottom curve back to nose
+    ctx.lineTo(x - w / 4, y + h / 2); // Bottom back
+    ctx.quadraticCurveTo(x + w / 4, y + h / 2, x + w / 2, y); // Bottom curve to nose
     ctx.closePath();
     ctx.fill();
+    // Optional: Add a border
+    // ctx.strokeStyle = '#333';
+    // ctx.lineWidth = 1;
+    // ctx.stroke();
+
+    // Cockpit Window
     ctx.fillStyle = ship.windowColor;
     ctx.beginPath();
-    ctx.arc(ship.x - ship.width * 0.1, shipY, ship.height / 5, 0, Math.PI * 2);
+    // Slightly elongated oval shape
+    ctx.ellipse(x + w * 0.1, y, w * 0.2, h * 0.2, 0, 0, Math.PI * 2);
     ctx.fill();
+    // Simple shine on window
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.beginPath();
+    ctx.arc(x + w * 0.15, y - h * 0.05, w * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+
+
+    // Flame when flapping/moving up
     if (shipVelocityY < -50) {
-        ctx.fillStyle = ship.flameColor;
+        // Inner flame (yellow)
+        ctx.fillStyle = ship.flameColor1;
         ctx.beginPath();
-        ctx.moveTo(ship.x - ship.width / 2, shipY - ship.height * 0.3);
-        ctx.lineTo(ship.x - ship.width * 0.8, shipY);
-        ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height * 0.3);
+        ctx.moveTo(x - w * 0.55, y - h * 0.3); // Start slightly behind body edge
+        ctx.lineTo(x - w, y); // Longer point
+        ctx.lineTo(x - w * 0.55, y + h * 0.3);
+        ctx.closePath();
+        ctx.fill();
+        // Outer flame (orange)
+        ctx.fillStyle = ship.flameColor2;
+        ctx.beginPath();
+        ctx.moveTo(x - w * 0.6, y - h * 0.4);
+        ctx.lineTo(x - w * 0.8, y); // Shorter point
+        ctx.lineTo(x - w * 0.6, y + h * 0.4);
         ctx.closePath();
         ctx.fill();
     }
@@ -186,6 +210,23 @@ function drawCoins() {
     coins.forEach(coin => {
         ctx.beginPath();
         ctx.arc(coin.x, coin.y, COIN_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+// *** Function to draw gnomes ***
+function drawGnomes() {
+    gnomes.forEach(gnome => {
+        // Body
+        ctx.fillStyle = GNOME_COLOR_BODY;
+        ctx.fillRect(gnome.x, gnome.y + GNOME_HEIGHT * 0.3, GNOME_WIDTH, GNOME_HEIGHT * 0.7);
+        // Hat
+        ctx.fillStyle = GNOME_COLOR_HAT;
+        ctx.beginPath();
+        ctx.moveTo(gnome.x, gnome.y + GNOME_HEIGHT * 0.3); // Left base of hat
+        ctx.lineTo(gnome.x + GNOME_WIDTH / 2, gnome.y); // Point of hat
+        ctx.lineTo(gnome.x + GNOME_WIDTH, gnome.y + GNOME_HEIGHT * 0.3); // Right base of hat
+        ctx.closePath();
         ctx.fill();
     });
 }
@@ -242,7 +283,7 @@ function updateObstacles(deltaTime) {
     }
 }
 
-// Function to update coin positions and check collection - MODIFIED to use safe sound trigger
+// Function to update coin positions and check collection - No Change
 function updateCoins(deltaTime) {
     for (let i = coins.length - 1; i >= 0; i--) {
         coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime;
@@ -261,7 +302,7 @@ function updateCoins(deltaTime) {
         if (distanceSquared < (COIN_RADIUS * COIN_RADIUS)) {
             score += COIN_SCORE;
             scoreDisplay.textContent = `Score: ${score}`;
-            if (audioStarted) coinSynth.triggerAttackRelease("A5", "0.1"); // Play coin sound safely
+            if (audioStarted) coinSynth.triggerAttackRelease("A5", "0.1");
             coins.splice(i, 1);
             continue;
         }
@@ -272,107 +313,106 @@ function updateCoins(deltaTime) {
     }
 }
 
+// *** Function to spawn a gnome ***
+function spawnGnome() {
+    const gnomeX = CANVAS_WIDTH;
+    const gnomeY = CANVAS_HEIGHT - GNOME_HEIGHT; // Gnome sits on the ground
+    gnomes.push({ x: gnomeX, y: gnomeY, width: GNOME_WIDTH, height: GNOME_HEIGHT });
+    console.log("Gnome spawned!");
+    // Reset gnome spawn timer
+    gnomeSpawnTimer = GNOME_SPAWN_INTERVAL_MIN_MS + Math.random() * GNOME_SPAWN_INTERVAL_RANGE_MS;
+}
 
-// Function to check for collisions between ship and obstacles - No Change
-function checkCollisions() {
-    for (const pair of obstacles) {
-        if (ship.x + ship.width / 2 > pair.x && ship.x - ship.width / 2 < pair.x + OBSTACLE_WIDTH) {
-            if (shipY - ship.height / 2 < pair.topHeight || shipY + ship.height / 2 > pair.bottomY) {
-                return true;
-            }
+// *** Function to update gnome positions ***
+function updateGnomes(deltaTime) {
+    for (let i = gnomes.length - 1; i >= 0; i--) {
+        gnomes[i].x -= GNOME_SPEED_PER_SECOND * deltaTime; // Move gnome left
+
+        // Remove gnomes that are off-screen
+        if (gnomes[i].x + GNOME_WIDTH < 0) {
+            gnomes.splice(i, 1);
         }
     }
-    return false;
+
+     // Update and check spawn timer
+    if (typeof gnomeSpawnTimer === 'number') {
+        gnomeSpawnTimer -= deltaTime * 1000;
+        if (gnomeSpawnTimer <= 0) {
+            spawnGnome();
+        }
+    }
+}
+
+
+// Function to check for collisions between ship and obstacles/gnomes - MODIFIED
+function checkCollisions() {
+    // Check Obstacle Collisions
+    for (const pair of obstacles) {
+        // Simple AABB check (using ship center and dimensions for approximation)
+        const shipLeft = ship.x - ship.width / 2;
+        const shipRight = ship.x + ship.width / 2;
+        const shipTop = shipY - ship.height / 2;
+        const shipBottom = shipY + ship.height / 2;
+
+        // Check collision with top obstacle
+        if (shipRight > pair.x && shipLeft < pair.x + OBSTACLE_WIDTH && shipTop < pair.topHeight) {
+            return true; // Collision with top part
+        }
+        // Check collision with bottom obstacle
+        if (shipRight > pair.x && shipLeft < pair.x + OBSTACLE_WIDTH && shipBottom > pair.bottomY) {
+            return true; // Collision with bottom part
+        }
+    }
+
+    // *** Check Gnome Collisions ***
+    for (const gnome of gnomes) {
+        const shipLeft = ship.x - ship.width / 2;
+        const shipRight = ship.x + ship.width / 2;
+        const shipTop = shipY - ship.height / 2;
+        const shipBottom = shipY + ship.height / 2;
+
+        if (shipRight > gnome.x &&
+            shipLeft < gnome.x + gnome.width &&
+            shipBottom > gnome.y &&
+            shipTop < gnome.y + gnome.height) {
+            console.log("Gnome collision!");
+            return true; // Collision with gnome
+        }
+    }
+
+    return false; // No collision
 }
 
 // --- Leaderboard Functions --- No Change
+// ... (getLeaderboard, saveLeaderboard, checkHighScore, addScoreToLeaderboard, displayLeaderboard remain the same) ...
+function getLeaderboard() { const board = localStorage.getItem(LEADERBOARD_KEY); try { const parsedBoard = board ? JSON.parse(board) : []; return Array.isArray(parsedBoard) ? parsedBoard : []; } catch (e) { console.error("Error parsing leaderboard from localStorage:", e); return []; } }
+function saveLeaderboard(board) { try { localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board)); } catch (e) { console.error("Error saving leaderboard to localStorage:", e); } }
+function checkHighScore(currentScore) { const board = getLeaderboard(); const lowestScore = board.length < LEADERBOARD_MAX_ENTRIES ? 0 : board[board.length - 1].score; return currentScore > lowestScore; }
+function addScoreToLeaderboard(name, score) { const board = getLeaderboard(); const formattedName = name.trim().substring(0, 3).toUpperCase() || "???"; board.push({ name: formattedName, score: score }); board.sort((a, b) => b.score - a.score); const updatedBoard = board.slice(0, LEADERBOARD_MAX_ENTRIES); saveLeaderboard(updatedBoard); displayLeaderboard(); }
+function displayLeaderboard() { const board = getLeaderboard(); if (!leaderboardList) { console.error("Leaderboard list element not found!"); return; } leaderboardList.innerHTML = ''; if (board.length === 0) { leaderboardList.innerHTML = '<li>No scores yet!</li>'; return; } board.forEach((entry) => { const li = document.createElement('li'); const nameSpan = document.createElement('span'); nameSpan.className = 'name'; nameSpan.textContent = entry.name; const scoreSpan = document.createElement('span'); scoreSpan.className = 'score'; scoreSpan.textContent = entry.score; li.appendChild(nameSpan); li.appendChild(scoreSpan); leaderboardList.appendChild(li); }); }
 
-function getLeaderboard() {
-    const board = localStorage.getItem(LEADERBOARD_KEY);
-    try {
-        const parsedBoard = board ? JSON.parse(board) : [];
-        return Array.isArray(parsedBoard) ? parsedBoard : [];
-    } catch (e) {
-        console.error("Error parsing leaderboard from localStorage:", e);
-        return [];
-    }
-}
-
-function saveLeaderboard(board) {
-    try {
-        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board));
-    } catch (e) {
-        console.error("Error saving leaderboard to localStorage:", e);
-    }
-}
-
-function checkHighScore(currentScore) {
-    const board = getLeaderboard();
-    const lowestScore = board.length < LEADERBOARD_MAX_ENTRIES ? 0 : board[board.length - 1].score;
-    return currentScore > lowestScore;
-}
-
-function addScoreToLeaderboard(name, score) {
-    const board = getLeaderboard();
-    const formattedName = name.trim().substring(0, 3).toUpperCase() || "???";
-    board.push({ name: formattedName, score: score });
-    board.sort((a, b) => b.score - a.score);
-    const updatedBoard = board.slice(0, LEADERBOARD_MAX_ENTRIES);
-    saveLeaderboard(updatedBoard);
-    displayLeaderboard();
-}
-
-function displayLeaderboard() {
-    const board = getLeaderboard();
-    if (!leaderboardList) {
-        console.error("Leaderboard list element not found!");
-        return;
-    }
-    leaderboardList.innerHTML = '';
-    if (board.length === 0) {
-        leaderboardList.innerHTML = '<li>No scores yet!</li>';
-        return;
-    }
-    board.forEach((entry) => {
-        const li = document.createElement('li');
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'name';
-        nameSpan.textContent = entry.name;
-        const scoreSpan = document.createElement('span');
-        scoreSpan.className = 'score';
-        scoreSpan.textContent = entry.score;
-        li.appendChild(nameSpan);
-        li.appendChild(scoreSpan);
-        leaderboardList.appendChild(li);
-    });
-}
 
 // --- Game State Functions ---
 
-// MODIFIED gameOver to stop music
+// MODIFIED gameOver to stop music - No Change from previous
 function gameOver() {
     console.log("Executing gameOver function");
     gameRunning = false;
     gameOverDisplay.classList.remove('hidden');
     finalScoreDisplay.textContent = score;
     startMessage.classList.add('hidden');
-
-    // *** Stop the music ***
     if (typeof Tone !== 'undefined' && Tone.Transport.state === "started") {
         Tone.Transport.stop();
-        Tone.Transport.cancel(); // Remove scheduled events
+        Tone.Transport.cancel();
         console.log("Music stopped.");
     }
-
     currentHighScore = checkHighScore(score);
     if (currentHighScore) {
-        console.log("High score detected, showing name input.");
         nameInputArea.classList.remove('hidden');
         restartButton.classList.add('hidden');
         playerNameInput.value = '';
         playerNameInput.focus();
     } else {
-        console.log("Not a high score, showing restart button.");
         nameInputArea.classList.add('hidden');
         restartButton.classList.remove('hidden');
     }
@@ -390,15 +430,18 @@ function initializeStars() {
     }
 }
 
-// MODIFIED resetGame to potentially start music
+// MODIFIED resetGame to initialize gnomes and gnome timer
 function resetGame() {
     console.log("Executing resetGame function");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     coins = [];
+    gnomes = []; // *** Initialize gnomes array ***
     score = 0;
     obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2;
+    // *** Initialize gnome timer ***
+    gnomeSpawnTimer = GNOME_SPAWN_INTERVAL_MIN_MS + Math.random() * GNOME_SPAWN_INTERVAL_RANGE_MS;
     gameRunning = true;
     gameStarted = true;
     currentHighScore = false;
@@ -412,21 +455,18 @@ function resetGame() {
 
     initializeStars();
 
-    // *** Start music if Tone available and transport not already started ***
     if (typeof Tone !== 'undefined' && Tone.Transport.state !== "started") {
-        // Ensure Transport is ready before starting loop
          Tone.Transport.start();
-         musicLoop.start(0); // Start the sequence immediately
+         musicLoop.start(0);
          console.log("Music started.");
     }
-
 
     cancelAnimationFrame(animationFrameId);
     console.log("Requesting first animation frame for gameLoop");
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Game Loop --- No Change
+// --- Game Loop --- MODIFIED to update/draw gnomes
 function gameLoop(currentTime) {
     if (!gameRunning) {
          return;
@@ -445,137 +485,61 @@ function gameLoop(currentTime) {
          return;
     }
 
+    // --- Updates based on deltaTime ---
     updateBackground(deltaTime);
     updateShip(deltaTime);
     updateObstacles(deltaTime);
     updateCoins(deltaTime);
+    updateGnomes(deltaTime); // *** Update gnomes ***
 
+    // --- Drawing ---
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground();
     drawObstacles();
     drawCoins();
-    drawShip();
+    drawGnomes(); // *** Draw gnomes ***
+    drawShip(); // Draw ship last (on top)
 
-    if (checkCollisions()) {
+    // --- Collision Check ---
+    if (checkCollisions()) { // Now checks obstacles AND gnomes
         gameOver();
     }
 
+    // --- Request Next Frame ---
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Input Handling ---
-
-// MODIFIED triggerFlap to handle audio context start and play sound
-function triggerFlap() {
-    // Start Tone.js audio context on first interaction
-    // Check if Tone is loaded and context hasn't started
-    if (typeof Tone !== 'undefined' && !audioStarted) {
-        Tone.start().then(() => {
-             audioStarted = true;
-             console.log("Audio Context Started");
-             // Now that context is started, proceed with flap/game start
-             handleFlapAction();
-        }).catch(e => {
-            console.error("Error starting Audio Context:", e);
-            // Proceed without audio if context fails
-             handleFlapAction();
-        });
-    } else {
-        // Audio context already started or Tone not loaded, proceed directly
-        handleFlapAction();
-    }
-}
-
-// Helper function to separate flap logic after audio context check
-function handleFlapAction() {
-     if (!gameStarted) {
-        console.log("First flap, calling resetGame()");
-        resetGame(); // This now starts the gameLoop and music
-        // Play flap sound on first flap too
-        if (audioStarted) flapSynth.triggerAttackRelease("C4", "0.05");
-    } else if (gameRunning) {
-         console.log("Flapping!");
-         shipVelocityY = FLAP_VELOCITY;
-         if (audioStarted) flapSynth.triggerAttackRelease("C5", "0.05"); // Play flap sound
-    } else {
-         console.log("Flap ignored because game is not running");
-    }
-}
+// --- Input Handling --- No Change from previous
+// ... (triggerFlap, handleFlapAction, handleKeyDown, handleTouchStart, handleClick, handleRestart, handleSubmitScore, handleNameSubmitKey remain the same) ...
+function triggerFlap() { if (typeof Tone !== 'undefined' && !audioStarted) { Tone.start().then(() => { audioStarted = true; console.log("Audio Context Started"); handleFlapAction(); }).catch(e => { console.error("Error starting Audio Context:", e); handleFlapAction(); }); } else { handleFlapAction(); } }
+function handleFlapAction() { if (!gameStarted) { resetGame(); if (audioStarted) flapSynth.triggerAttackRelease("C4", "0.05"); } else if (gameRunning) { shipVelocityY = FLAP_VELOCITY; if (audioStarted) flapSynth.triggerAttackRelease("C5", "0.05"); } }
+function handleKeyDown(e) { if (e.code === 'Space') { e.preventDefault(); triggerFlap(); } }
+function handleTouchStart(e) { e.preventDefault(); triggerFlap(); }
+function handleClick(e) { e.preventDefault(); triggerFlap(); }
+function handleRestart() { resetGame(); }
+function handleSubmitScore() { const playerName = playerNameInput.value; if (playerName.trim().length > 0 && currentHighScore) { addScoreToLeaderboard(playerName, score); nameInputArea.classList.add('hidden'); restartButton.classList.remove('hidden'); currentHighScore = false; } else if (playerName.trim().length === 0) { console.log("Player name cannot be empty"); playerNameInput.focus(); } }
+function handleNameSubmitKey(e) { if (e.code === 'Enter') { e.preventDefault(); handleSubmitScore(); } }
 
 
-// Handle jump input (Spacebar) - No Change
-function handleKeyDown(e) {
-    if (e.code === 'Space') {
-        e.preventDefault();
-        triggerFlap();
-    }
-}
-
-// Handle touch input on the canvas - No Change
-function handleTouchStart(e) {
-    e.preventDefault();
-    triggerFlap();
-}
-
-// Handle click input on the canvas - No Change
-function handleClick(e) {
-    e.preventDefault();
-    triggerFlap();
-}
-
-
-// Handle restart button click - No Change
-function handleRestart() {
-    resetGame();
-}
-
-// Handle score submission - No Change
-function handleSubmitScore() {
-    const playerName = playerNameInput.value;
-    if (playerName.trim().length > 0 && currentHighScore) {
-        addScoreToLeaderboard(playerName, score);
-        nameInputArea.classList.add('hidden');
-        restartButton.classList.remove('hidden');
-        currentHighScore = false;
-    } else if (playerName.trim().length === 0) {
-        console.log("Player name cannot be empty");
-        playerNameInput.focus();
-    }
-}
-
-// Handle submitting name with Enter key - No Change
-function handleNameSubmitKey(e) {
-    if (e.code === 'Enter') {
-        e.preventDefault();
-        handleSubmitScore();
-    }
-}
-
-
-// --- Initial Setup --- MODIFIED to initialize coins array
+// --- Initial Setup --- MODIFIED to initialize gnomes array
 function initializeDisplay() {
     console.log("Initializing display...");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     coins = [];
+    gnomes = []; // *** Initialize gnomes array ***
     score = 0;
     gameRunning = false;
     gameStarted = false;
     currentHighScore = false;
     lastTime = 0;
-    audioStarted = false; // Reset audio flag
+    audioStarted = false;
 
     initializeStars();
 
-    if (!ctx) {
-        console.error("Canvas context (ctx) is not available!");
-        return;
-    }
-    if (!canvas) {
-         console.error("Canvas element not found!");
-         return;
-    }
+    if (!ctx) { console.error("Canvas context (ctx) is not available!"); return; }
+    if (!canvas) { console.error("Canvas element not found!"); return; }
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground();
@@ -591,27 +555,13 @@ function initializeDisplay() {
     // Add event listeners only once during initialization
     window.removeEventListener('keydown', handleKeyDown);
     window.addEventListener('keydown', handleKeyDown);
-
     canvas.removeEventListener('touchstart', handleTouchStart);
     canvas.addEventListener('touchstart', handleTouchStart);
-
     canvas.removeEventListener('click', handleClick);
     canvas.addEventListener('click', handleClick);
-
-    if (restartButton) {
-        restartButton.removeEventListener('click', handleRestart);
-        restartButton.addEventListener('click', handleRestart);
-    } else { console.error("Restart button not found!"); }
-
-    if (submitScoreButton) {
-         submitScoreButton.removeEventListener('click', handleSubmitScore);
-         submitScoreButton.addEventListener('click', handleSubmitScore);
-    } else { console.error("Submit score button not found!"); }
-
-    if (playerNameInput) {
-        playerNameInput.removeEventListener('keydown', handleNameSubmitKey);
-        playerNameInput.addEventListener('keydown', handleNameSubmitKey);
-    } else { console.error("Player name input not found!"); }
+    if (restartButton) { restartButton.removeEventListener('click', handleRestart); restartButton.addEventListener('click', handleRestart); } else { console.error("Restart button not found!"); }
+    if (submitScoreButton) { submitScoreButton.removeEventListener('click', handleSubmitScore); submitScoreButton.addEventListener('click', handleSubmitScore); } else { console.error("Submit score button not found!"); }
+    if (playerNameInput) { playerNameInput.removeEventListener('keydown', handleNameSubmitKey); playerNameInput.addEventListener('keydown', handleNameSubmitKey); } else { console.error("Player name input not found!"); }
 
     console.log("Initialization complete. Waiting for first input.");
 }
