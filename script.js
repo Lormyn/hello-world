@@ -8,28 +8,32 @@ const gameOverDisplay = document.getElementById('game-over');
 const finalScoreDisplay = document.getElementById('final-score');
 const restartButton = document.getElementById('restart-button');
 const startMessage = document.getElementById('start-message');
+// Leaderboard elements
+const leaderboardList = document.getElementById('leaderboard-list');
+const nameInputArea = document.getElementById('name-input-area');
+const playerNameInput = document.getElementById('player-name');
+const submitScoreButton = document.getElementById('submit-score-button');
+
 
 // --- Game Constants ---
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
-// Spaceship Constants
 const SHIP_WIDTH = 40;
 const SHIP_HEIGHT = 30;
 const SHIP_START_X = 150;
 const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
-// Physics Constants
-const GRAVITY = 0.25; // Adjusted gravity
-const FLAP_FORCE = -6; // Upward force on flap
-const MAX_VELOCITY = 8; // Optional: Limit fall speed
+// Physics Constants - Values might need tweaking after deltaTime implementation
+const GRAVITY_PER_SECOND = 900; // Gravity effect per second
+const FLAP_VELOCITY = -280;   // Instant velocity change on flap (pixels per second)
 // Obstacle Constants
-const OBSTACLE_WIDTH = 80; // Width of the vertical obstacles
-const OBSTACLE_GAP = 120; // Vertical gap between obstacle pairs
-const OBSTACLE_COLOR = '#8b4513'; // Asteroid brown
-const OBSTACLE_SPEED = 3; // Speed obstacles move left
-const OBSTACLE_SPAWN_RATE = 120; // Frames between new obstacle pairs
+const OBSTACLE_WIDTH = 80;
+const OBSTACLE_GAP = 120;
+const OBSTACLE_COLOR = '#8b4513';
+const OBSTACLE_SPEED_PER_SECOND = 180; // Speed obstacles move left (pixels per second)
+const OBSTACLE_SPAWN_INTERVAL_MS = 2000; // Spawn interval in milliseconds (2 seconds)
 // Background Constants
 const STAR_COUNT = 100;
-const STAR_BASE_SPEED = 0.5;
+const STAR_BASE_SPEED_PER_SECOND = 30; // Pixels per second
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -37,30 +41,31 @@ canvas.height = CANVAS_HEIGHT;
 
 // --- Game Variables ---
 let shipY;
-let shipVelocityY;
-let obstacles; // Array for obstacle pairs { x, topHeight, bottomY, passed }
+let shipVelocityY; // Velocity in pixels per second
+let obstacles;
 let score;
-let frameCount;
-let obstacleSpawnTimer;
+// let frameCount; // No longer primary driver for timing
+let obstacleSpawnTimer; // Now measures time in ms
 let gameRunning;
 let gameStarted;
 let animationFrameId;
-let stars; // Array for background stars
+let stars;
+let currentHighScore = false;
+let lastTime = 0; // *** For deltaTime calculation ***
 
 // --- Spaceship Object ---
 const ship = {
     x: SHIP_START_X,
     width: SHIP_WIDTH,
     height: SHIP_HEIGHT,
-    // Colors for spaceship
-    bodyColor: '#c0c0c0', // Silver
-    windowColor: '#00ffff', // Cyan
-    flameColor: '#ff4500' // OrangeRed
+    bodyColor: '#c0c0c0',
+    windowColor: '#00ffff',
+    flameColor: '#ff4500'
 };
 
 // --- Functions ---
 
-// Function to draw the background stars - Reuse from previous
+// Function to draw the background stars - No Change
 function drawBackground() {
     ctx.fillStyle = '#fff';
     stars.forEach(star => {
@@ -70,10 +75,10 @@ function drawBackground() {
     });
 }
 
-// Function to update star positions - Reuse from previous
-function updateBackground() {
+// Function to update star positions - MODIFIED for deltaTime
+function updateBackground(deltaTime) {
     stars.forEach(star => {
-        star.x -= star.speed;
+        star.x -= star.speed * deltaTime; // Use deltaTime
         if (star.x < -star.radius) {
             star.x = CANVAS_WIDTH + star.radius;
             star.y = Math.random() * CANVAS_HEIGHT;
@@ -81,86 +86,74 @@ function updateBackground() {
     });
 }
 
-// Function to draw the spaceship (simple rocket shape)
+// Function to draw the spaceship - No Change
 function drawShip() {
-    // Main body (triangle)
     ctx.fillStyle = ship.bodyColor;
     ctx.beginPath();
-    ctx.moveTo(ship.x, shipY + ship.height / 2); // Nose cone
-    ctx.lineTo(ship.x - ship.width / 2, shipY - ship.height / 2); // Top back wing
-    ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height / 2); // Bottom back wing
+    ctx.moveTo(ship.x, shipY + ship.height / 2);
+    ctx.lineTo(ship.x - ship.width / 2, shipY - ship.height / 2);
+    ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height / 2);
     ctx.closePath();
     ctx.fill();
-
-    // Window (small circle)
     ctx.fillStyle = ship.windowColor;
     ctx.beginPath();
     ctx.arc(ship.x - ship.width * 0.1, shipY, ship.height / 5, 0, Math.PI * 2);
     ctx.fill();
-
-    // Flame when flapping/moving up (optional visual feedback)
-    if (shipVelocityY < -1) { // Show flame if moving up significantly
+    // Adjusted flame condition based on velocity in pixels/sec
+    if (shipVelocityY < -50) { // Show flame if moving up significantly
         ctx.fillStyle = ship.flameColor;
         ctx.beginPath();
         ctx.moveTo(ship.x - ship.width / 2, shipY - ship.height * 0.3);
-        ctx.lineTo(ship.x - ship.width * 0.8, shipY); // Flame point 1
+        ctx.lineTo(ship.x - ship.width * 0.8, shipY);
         ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height * 0.3);
         ctx.closePath();
         ctx.fill();
     }
 }
 
-
-// Function to draw obstacle pairs
+// Function to draw obstacle pairs - No Change
 function drawObstacles() {
     ctx.fillStyle = OBSTACLE_COLOR;
     obstacles.forEach(pair => {
-        // Draw top obstacle
         ctx.fillRect(pair.x, 0, OBSTACLE_WIDTH, pair.topHeight);
-        // Draw bottom obstacle
         ctx.fillRect(pair.x, pair.bottomY, OBSTACLE_WIDTH, CANVAS_HEIGHT - pair.bottomY);
     });
 }
 
-// Function to update ship position (gravity and flap)
-function updateShip() {
-    shipVelocityY += GRAVITY;
-    // Optional: Limit fall speed
-    // if (shipVelocityY > MAX_VELOCITY) {
-    //     shipVelocityY = MAX_VELOCITY;
-    // }
-    shipY += shipVelocityY;
+// Function to update ship position - MODIFIED for deltaTime
+function updateShip(deltaTime) {
+    // Apply gravity (acceleration in pixels/sec^2)
+    shipVelocityY += GRAVITY_PER_SECOND * deltaTime;
+    // Update position based on velocity (pixels/sec * sec)
+    shipY += shipVelocityY * deltaTime;
 
     // Check for collision with top/bottom boundaries
-    if (shipY < 0 || shipY + ship.height > CANVAS_HEIGHT) {
-        gameOver();
+    if (shipY < 0) {
+        shipY = 0; // Stop at top boundary
+        shipVelocityY = 0; // Reset velocity to prevent sticking (optional)
+        // gameOver(); // Optionally end game on hitting top
+    } else if (shipY + ship.height > CANVAS_HEIGHT) {
+         shipY = CANVAS_HEIGHT - ship.height; // Stop at bottom boundary
+         shipVelocityY = 0; // Reset velocity
+         gameOver(); // End game on hitting bottom
     }
 }
 
-// Function to spawn a new obstacle pair
+// Function to spawn a new obstacle pair - No Change in logic
 function spawnObstaclePair() {
-    // Calculate maximum possible height for the top obstacle
-    // ensuring the gap and minimum bottom obstacle height
-    const maxTopHeight = CANVAS_HEIGHT - OBSTACLE_GAP - 20; // Min 20px for bottom obstacle
-    const minTopHeight = 20; // Min 20px for top obstacle
-
+    const maxTopHeight = CANVAS_HEIGHT - OBSTACLE_GAP - 20;
+    const minTopHeight = 20;
     const topHeight = Math.random() * (maxTopHeight - minTopHeight) + minTopHeight;
     const bottomY = topHeight + OBSTACLE_GAP;
-
-    obstacles.push({
-        x: CANVAS_WIDTH,
-        topHeight: topHeight,
-        bottomY: bottomY,
-        passed: false // Flag to track scoring
-    });
-
-    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE;
+    obstacles.push({ x: CANVAS_WIDTH, topHeight: topHeight, bottomY: bottomY, passed: false });
+    // Timer reset is handled in updateObstacles
 }
 
-// Function to update obstacle positions and handle scoring
-function updateObstacles() {
+// Function to update obstacle positions and handle scoring - MODIFIED for deltaTime
+function updateObstacles(deltaTime) {
+    // Update obstacle positions
     for (let i = obstacles.length - 1; i >= 0; i--) {
-        obstacles[i].x -= OBSTACLE_SPEED;
+        obstacles[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime; // Use deltaTime
 
         // Scoring: Check if the obstacle pair has passed the ship's position
         if (!obstacles[i].passed && obstacles[i].x + OBSTACLE_WIDTH < ship.x) {
@@ -175,14 +168,15 @@ function updateObstacles() {
         }
     }
 
-    // Decrease spawn timer and spawn if ready
-    obstacleSpawnTimer--;
+    // Update and check spawn timer (using deltaTime converted to ms)
+    obstacleSpawnTimer -= deltaTime * 1000; // Decrease timer by elapsed ms
     if (obstacleSpawnTimer <= 0) {
         spawnObstaclePair();
+        obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS; // Reset timer
     }
 }
 
-// Function to check for collisions between ship and obstacles
+// Function to check for collisions between ship and obstacles - No Change
 function checkCollisions() {
     for (const pair of obstacles) {
         // Check collision with top obstacle
@@ -205,16 +199,103 @@ function checkCollisions() {
     return false; // No collision
 }
 
-// Function to handle game over state - NO CHANGE needed
+// --- Leaderboard Functions --- No Change
+
+function getLeaderboard() {
+    const board = localStorage.getItem(LEADERBOARD_KEY);
+    console.log("Raw data from localStorage:", board);
+    try {
+        const parsedBoard = board ? JSON.parse(board) : [];
+        console.log("Parsed leaderboard:", parsedBoard);
+        return Array.isArray(parsedBoard) ? parsedBoard : [];
+    } catch (e) {
+        console.error("Error parsing leaderboard from localStorage:", e);
+        return [];
+    }
+}
+
+function saveLeaderboard(board) {
+    try {
+        console.log("Saving leaderboard:", board);
+        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board));
+    } catch (e) {
+        console.error("Error saving leaderboard to localStorage:", e);
+    }
+}
+
+function checkHighScore(currentScore) {
+    const board = getLeaderboard();
+    const lowestScore = board.length < LEADERBOARD_MAX_ENTRIES ? 0 : board[board.length - 1].score;
+    console.log(`Checking high score: Current=${currentScore}, Lowest on board (or 0)=${lowestScore}`);
+    const isHighScore = currentScore > lowestScore;
+    console.log("Is high score?", isHighScore);
+    return isHighScore;
+}
+
+function addScoreToLeaderboard(name, score) {
+    const board = getLeaderboard();
+    const formattedName = name.trim().substring(0, 3).toUpperCase() || "???";
+    console.log(`Adding score: Name=${formattedName}, Score=${score}`);
+    board.push({ name: formattedName, score: score });
+    board.sort((a, b) => b.score - a.score);
+    const updatedBoard = board.slice(0, LEADERBOARD_MAX_ENTRIES);
+    saveLeaderboard(updatedBoard);
+    displayLeaderboard();
+}
+
+function displayLeaderboard() {
+    console.log("Attempting to display leaderboard...");
+    const board = getLeaderboard();
+    if (!leaderboardList) {
+        console.error("Leaderboard list element not found!");
+        return;
+    }
+    leaderboardList.innerHTML = '';
+    if (board.length === 0) {
+        console.log("Leaderboard is empty, displaying 'No scores yet!'");
+        leaderboardList.innerHTML = '<li>No scores yet!</li>';
+        return;
+    }
+    console.log(`Populating leaderboard display with ${board.length} entries.`);
+    board.forEach((entry, index) => {
+        console.log(`Adding entry ${index}:`, entry);
+        const li = document.createElement('li');
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'name';
+        nameSpan.textContent = entry.name;
+        const scoreSpan = document.createElement('span');
+        scoreSpan.className = 'score';
+        scoreSpan.textContent = entry.score;
+        li.appendChild(nameSpan);
+        li.appendChild(scoreSpan);
+        leaderboardList.appendChild(li);
+    });
+}
+
+// --- Game State Functions --- No Change (except where noted)
+
 function gameOver() {
     gameRunning = false;
-    cancelAnimationFrame(animationFrameId);
+    // Don't cancel animation frame here if we want game over screen to persist
+    // cancelAnimationFrame(animationFrameId);
     gameOverDisplay.classList.remove('hidden');
     finalScoreDisplay.textContent = score;
     startMessage.classList.add('hidden');
+
+    currentHighScore = checkHighScore(score);
+    if (currentHighScore) {
+        console.log("High score detected, showing name input.");
+        nameInputArea.classList.remove('hidden');
+        restartButton.classList.add('hidden');
+        playerNameInput.value = '';
+        playerNameInput.focus();
+    } else {
+        console.log("Not a high score, showing restart button.");
+        nameInputArea.classList.add('hidden');
+        restartButton.classList.remove('hidden');
+    }
 }
 
-// Function to initialize star positions - Reuse from previous
 function initializeStars() {
     stars = [];
     for (let i = 0; i < STAR_COUNT; i++) {
@@ -222,119 +303,155 @@ function initializeStars() {
             x: Math.random() * CANVAS_WIDTH,
             y: Math.random() * CANVAS_HEIGHT,
             radius: Math.random() * 1.5 + 0.5,
-            speed: STAR_BASE_SPEED + Math.random() * 1.0
+            // Use speed per second for stars too
+            speed: STAR_BASE_SPEED_PER_SECOND + Math.random() * 50
         });
     }
 }
 
-// Function to reset the game state for starting or restarting
 function resetGame() {
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     score = 0;
-    frameCount = 0;
-    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE / 2; // Spawn first obstacle faster
+    // frameCount = 0; // Not needed
+    obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2; // Spawn first obstacle faster
     gameRunning = true;
     gameStarted = true;
+    currentHighScore = false;
+    lastTime = 0; // Reset lastTime for deltaTime calculation
 
     scoreDisplay.textContent = `Score: ${score}`;
     gameOverDisplay.classList.add('hidden');
+    nameInputArea.classList.add('hidden');
+    restartButton.classList.remove('hidden');
     startMessage.classList.add('hidden');
 
-    initializeStars(); // Initialize stars on reset
+    initializeStars();
 
-    cancelAnimationFrame(animationFrameId);
-    // Don't spawn obstacle immediately, wait for timer
-    gameLoop();
-}
-
-// --- Game Loop ---
-function gameLoop() {
-    if (!gameRunning) return;
-
-    // 1. Clear the canvas
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // 2. Update Background
-    updateBackground();
-
-    // 3. Draw Background
-    drawBackground();
-
-    // 4. Update Game Elements
-    updateShip(); // Update ship physics
-    updateObstacles(); // Update obstacles & scoring
-
-    // 5. Draw Game Elements
-    drawShip(); // Draw spaceship
-    drawObstacles(); // Draw vertical obstacles
-
-    // 6. Check for collisions (obstacles)
-    if (checkCollisions()) {
-        gameOver();
-        return;
-    }
-    // Note: Boundary collision is checked within updateShip()
-
-    // 7. Increment frame count
-    frameCount++;
-
-    // 8. Request the next frame
+    cancelAnimationFrame(animationFrameId); // Stop any previous loop
+    // Start the game loop - requestAnimationFrame requires a timestamp argument
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Input Handling ---
+// --- Game Loop --- MODIFIED for deltaTime
+function gameLoop(currentTime) {
+    // If game stopped, don't continue loop
+    if (!gameRunning && gameStarted) { // Check gameStarted to prevent stopping before first frame
+         cancelAnimationFrame(animationFrameId);
+         return;
+    }
+
+    // Calculate deltaTime
+    if (lastTime === 0) { // Handle first frame
+        lastTime = currentTime;
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return;
+    }
+    const deltaTime = (currentTime - lastTime) / 1000; // DeltaTime in seconds
+    lastTime = currentTime;
+
+    // --- Updates based on deltaTime ---
+    updateBackground(deltaTime);
+    updateShip(deltaTime);
+    updateObstacles(deltaTime);
+
+    // --- Drawing ---
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); // Clear canvas first
+    drawBackground(); // Draw background
+    drawShip(); // Draw spaceship
+    drawObstacles(); // Draw vertical obstacles
+
+    // --- Collision Check ---
+    if (checkCollisions()) {
+        gameOver(); // This will set gameRunning to false, stopping the loop on next check
+        // No need to return here, let game over screen draw
+    }
+
+    // --- Request Next Frame ---
+    // Only request next frame if game is still running
+    if (gameRunning) {
+       animationFrameId = requestAnimationFrame(gameLoop);
+    }
+}
+
+// --- Input Handling --- MODIFIED (flap uses velocity directly)
 
 // Function to trigger flap action
 function triggerFlap() {
     if (!gameStarted) {
-        // First input starts the game
-        resetGame();
+        resetGame(); // This now starts the gameLoop
     } else if (gameRunning) {
-        // Flap only if game is running
-        shipVelocityY = FLAP_FORCE; // Apply upward thrust
+        shipVelocityY = FLAP_VELOCITY; // Set velocity directly
     }
 }
 
-// Handle jump input (Spacebar)
+// Handle jump input (Spacebar) - No Change
 function handleKeyDown(e) {
     if (e.code === 'Space') {
         e.preventDefault();
-        triggerFlap(); // Call the flap function
+        triggerFlap();
     }
 }
 
-// Handle touch input on the canvas
+// Handle touch input on the canvas - No Change
 function handleTouchStart(e) {
     e.preventDefault();
-    triggerFlap(); // Call the flap function
+    triggerFlap();
 }
 
-// Handle restart button click - NO CHANGE
+// Handle restart button click - No Change
 function handleRestart() {
     resetGame();
 }
 
-// --- Initial Setup ---
-// Function to draw the initial state
+// Handle score submission - No Change
+function handleSubmitScore() {
+    const playerName = playerNameInput.value;
+    if (playerName.trim().length > 0 && currentHighScore) {
+        addScoreToLeaderboard(playerName, score);
+        nameInputArea.classList.add('hidden');
+        restartButton.classList.remove('hidden');
+        currentHighScore = false;
+    } else if (playerName.trim().length === 0) {
+        console.log("Player name cannot be empty");
+        playerNameInput.focus();
+    }
+}
+
+// Handle submitting name with Enter key - No Change
+function handleNameSubmitKey(e) {
+    if (e.code === 'Enter') {
+        e.preventDefault();
+        handleSubmitScore();
+    }
+}
+
+
+// --- Initial Setup --- MODIFIED (Starts loop differently)
 function initializeDisplay() {
+    console.log("Initializing display...");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     score = 0;
-    gameRunning = false;
-    gameStarted = false;
+    gameRunning = false; // Game doesn't start running until first flap
+    gameStarted = false; // Game hasn't started yet
+    currentHighScore = false;
+    lastTime = 0; // Initialize lastTime
 
     initializeStars();
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground();
-    drawShip(); // Draw the ship in starting position
+    drawShip();
 
     startMessage.classList.remove('hidden');
     gameOverDisplay.classList.add('hidden');
+    nameInputArea.classList.add('hidden');
     scoreDisplay.textContent = `Score: 0`;
+
+    displayLeaderboard();
 
     // Add event listeners only once during initialization
     window.removeEventListener('keydown', handleKeyDown);
@@ -345,6 +462,14 @@ function initializeDisplay() {
 
     restartButton.removeEventListener('click', handleRestart);
     restartButton.addEventListener('click', handleRestart);
+
+    submitScoreButton.removeEventListener('click', handleSubmitScore);
+    submitScoreButton.addEventListener('click', handleSubmitScore);
+
+    playerNameInput.removeEventListener('keydown', handleNameSubmitKey);
+    playerNameInput.addEventListener('keydown', handleNameSubmitKey);
+
+    // Don't start game loop here, wait for first input in triggerFlap -> resetGame
 }
 
 // Initialize the display when the script loads
