@@ -24,24 +24,24 @@ const SHIP_START_X = 150;
 const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
 // Physics Constants
 const GRAVITY_PER_SECOND = 900;
-const FLAP_VELOCITY = -240;
+const FLAP_VELOCITY = -250;
 // Obstacle Constants
 const OBSTACLE_WIDTH = 80;
 const OBSTACLE_GAP = 120;
 const OBSTACLE_COLOR = '#8b4513';
-const OBSTACLE_SPEED_PER_SECOND = 300;
-const OBSTACLE_SPAWN_INTERVAL_MS = 2000;
+const OBSTACLE_SPEED_PER_SECOND = 360;
+const OBSTACLE_SPAWN_INTERVAL_MS = 1800;
 // Background Constants
 const STAR_COUNT = 100;
 const STAR_BASE_SPEED_PER_SECOND = 30;
 // Leaderboard Constants
-const LEADERBOARD_KEY = 'flappyShipLeaderboard'; // *** Ensure this line exists and is correct ***
-const LEADERBOARD_MAX_ENTRIES = 10; // Max scores to keep
-// *** Coin Constants ***
-const COIN_RADIUS = 15;
-const COIN_COLOR = '#ffd700'; // Gold color
+const LEADERBOARD_KEY = 'flappyShipLeaderboard';
+const LEADERBOARD_MAX_ENTRIES = 10;
+// Coin Constants
+const COIN_RADIUS = 10;
+const COIN_COLOR = '#ffd700';
 const COIN_SCORE = 5;
-const COIN_SPAWN_CHANCE = 0.7; // 70% chance to spawn a coin with obstacles
+const COIN_SPAWN_CHANCE = 0.7;
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -49,18 +49,19 @@ canvas.height = CANVAS_HEIGHT;
 
 // --- Game Variables ---
 let shipY;
-let shipVelocityY; // Velocity in pixels per second
+let shipVelocityY;
 let obstacles;
-let coins; // *** Array for coins ***
+let coins;
 let score;
-let obstacleSpawnTimer; // Now measures time in ms
+let obstacleSpawnTimer;
 let gameRunning;
 let gameStarted;
 let animationFrameId;
 let stars;
 let currentHighScore = false;
-let lastTime = 0; // *** For deltaTime calculation ***
-let audioStarted = false; // Flag to check if audio context is started
+let lastTime = 0;
+let audioStarted = false;
+let musicLoop; // *** Variable to hold the music sequence ***
 
 // --- Spaceship Object ---
 const ship = {
@@ -72,17 +73,55 @@ const ship = {
     flameColor: '#ff4500'
 };
 
-// --- Sound Effects (Tone.js) ---
-// Initialize synths - doing this globally
-const flapSynth = new Tone.Synth({
-    oscillator: { type: 'triangle' },
-    envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.1 }
-}).toDestination();
+// --- Sound Effects & Music (Tone.js) ---
+// Ensure Tone is loaded before creating instances
+let flapSynth, coinSynth, musicSynth, reverb, filter;
+if (typeof Tone !== 'undefined') {
+    flapSynth = new Tone.Synth({
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.1 }
+    }).toDestination();
 
-const coinSynth = new Tone.Synth({
-    oscillator: { type: 'sine' }, // Brighter sound
-    envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 }
-}).toDestination();
+    coinSynth = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 }
+    }).toDestination();
+
+    // *** Setup for spacey music ***
+    reverb = new Tone.Reverb({
+        decay: 4, // Longer decay for spacey feel
+        wet: 0.4  // Mix of dry/wet signal
+    }).toDestination();
+
+    filter = new Tone.Filter({
+        type: 'lowpass',
+        frequency: 800, // Cut off high frequencies for softer sound
+        Q: 1
+    }); //.connect(reverb); // Chain filter to reverb
+
+    // Use FMSynth for potentially richer/spacey tones
+    musicSynth = new Tone.FMSynth({
+        harmonicity: 1.5,
+        modulationIndex: 10,
+        envelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 1 },
+        modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.2, release: 0.5 }
+    }).connect(filter).connect(reverb); // Connect synth through filter and reverb
+
+    // Define the musical sequence (simple C minor arpeggio)
+    const musicPattern = ["C3", ["Eb3", "G3"], "C3", ["G2", "Eb3"]];
+    musicLoop = new Tone.Sequence((time, note) => {
+        musicSynth.triggerAttackRelease(note, "8n", time); // Play note for an 8th note duration
+    }, musicPattern, "4n"); // Play pattern notes every quarter note
+
+    musicLoop.loop = true; // Ensure the sequence loops
+    Tone.Transport.bpm.value = 90; // Set tempo
+
+} else {
+    console.error("Tone.js not loaded! Sound effects and music will not work.");
+    // Provide dummy objects/functions if needed to prevent errors later
+    flapSynth = coinSynth = musicSynth = { triggerAttackRelease: () => {} };
+    musicLoop = { start: () => {}, stop: () => {} };
+}
 
 
 // --- Functions ---
@@ -97,10 +136,10 @@ function drawBackground() {
     });
 }
 
-// Function to update star positions - MODIFIED for deltaTime
+// Function to update star positions - No Change
 function updateBackground(deltaTime) {
     stars.forEach(star => {
-        star.x -= star.speed * deltaTime; // Use deltaTime
+        star.x -= star.speed * deltaTime;
         if (star.x < -star.radius) {
             star.x = CANVAS_WIDTH + star.radius;
             star.y = Math.random() * CANVAS_HEIGHT;
@@ -121,8 +160,7 @@ function drawShip() {
     ctx.beginPath();
     ctx.arc(ship.x - ship.width * 0.1, shipY, ship.height / 5, 0, Math.PI * 2);
     ctx.fill();
-    // Adjusted flame condition based on velocity in pixels/sec
-    if (shipVelocityY < -50) { // Show flame if moving up significantly
+    if (shipVelocityY < -50) {
         ctx.fillStyle = ship.flameColor;
         ctx.beginPath();
         ctx.moveTo(ship.x - ship.width / 2, shipY - ship.height * 0.3);
@@ -142,7 +180,7 @@ function drawObstacles() {
     });
 }
 
-// *** Function to draw coins ***
+// Function to draw coins - No Change
 function drawCoins() {
     ctx.fillStyle = COIN_COLOR;
     coins.forEach(coin => {
@@ -153,110 +191,81 @@ function drawCoins() {
 }
 
 
-// Function to update ship position - MODIFIED for deltaTime
+// Function to update ship position - No Change
 function updateShip(deltaTime) {
-    // Apply gravity (acceleration in pixels/sec^2)
     shipVelocityY += GRAVITY_PER_SECOND * deltaTime;
-    // Update position based on velocity (pixels/sec * sec)
     shipY += shipVelocityY * deltaTime;
-
-    // Check for collision with top/bottom boundaries
     if (shipY < 0) {
-        shipY = 0; // Stop at top boundary
-        shipVelocityY = 0; // Reset velocity to prevent sticking (optional)
-        // gameOver(); // Optionally end game on hitting top
+        shipY = 0;
+        shipVelocityY = 0;
     } else if (shipY + ship.height > CANVAS_HEIGHT) {
-         shipY = CANVAS_HEIGHT - ship.height; // Stop at bottom boundary
-         shipVelocityY = 0; // Reset velocity
-         gameOver(); // End game on hitting bottom
+         shipY = CANVAS_HEIGHT - ship.height;
+         shipVelocityY = 0;
+         gameOver();
     }
 }
 
-// Function to spawn a new obstacle pair - MODIFIED to potentially spawn coin
+// Function to spawn a new obstacle pair - No Change
 function spawnObstaclePair() {
     const maxTopHeight = CANVAS_HEIGHT - OBSTACLE_GAP - 20;
     const minTopHeight = 20;
     const topHeight = Math.random() * (maxTopHeight - minTopHeight) + minTopHeight;
     const bottomY = topHeight + OBSTACLE_GAP;
-
-    const obstacleX = CANVAS_WIDTH; // Start obstacles off-screen right
-
+    const obstacleX = CANVAS_WIDTH;
     obstacles.push({ x: obstacleX, topHeight: topHeight, bottomY: bottomY, passed: false });
-
-    // *** Spawn a coin within the gap based on chance ***
     if (Math.random() < COIN_SPAWN_CHANCE) {
-        const coinX = obstacleX + OBSTACLE_WIDTH / 2; // Center coin horizontally with obstacle
-        const coinY = topHeight + OBSTACLE_GAP / 2; // Center coin vertically in the gap
+        const coinX = obstacleX + OBSTACLE_WIDTH / 2;
+        const coinY = topHeight + OBSTACLE_GAP / 2;
         coins.push({ x: coinX, y: coinY });
-        // console.log("Coin spawned at:", coinX, coinY); // Log coin spawn
     }
-
-    // Timer reset is handled in updateObstacles
 }
 
-// Function to update obstacle positions and handle scoring - MODIFIED for deltaTime
+// Function to update obstacle positions and handle scoring - No Change
 function updateObstacles(deltaTime) {
-    // Update obstacle positions
     for (let i = obstacles.length - 1; i >= 0; i--) {
-        obstacles[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime; // Use deltaTime
-
-        // Scoring: Check if the obstacle pair has passed the ship's position
+        obstacles[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime;
         if (!obstacles[i].passed && obstacles[i].x + OBSTACLE_WIDTH < ship.x) {
-            score++; // Score for passing obstacle gap
+            score++;
             scoreDisplay.textContent = `Score: ${score}`;
             obstacles[i].passed = true;
         }
-
-        // Remove obstacles that are off-screen
         if (obstacles[i].x + OBSTACLE_WIDTH < 0) {
             obstacles.splice(i, 1);
         }
     }
-
-    // Update and check spawn timer (using deltaTime converted to ms)
-    // Ensure timer exists before decrementing
     if (typeof obstacleSpawnTimer === 'number') {
-         obstacleSpawnTimer -= deltaTime * 1000; // Decrease timer by elapsed ms
+         obstacleSpawnTimer -= deltaTime * 1000;
          if (obstacleSpawnTimer <= 0) {
              spawnObstaclePair();
-             obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS; // Reset timer
+             obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS;
          }
     }
 }
 
-// *** Function to update coin positions and check collection ***
+// Function to update coin positions and check collection - MODIFIED to use safe sound trigger
 function updateCoins(deltaTime) {
     for (let i = coins.length - 1; i >= 0; i--) {
-        coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime; // Coins move with obstacles
+        coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime;
 
-        // Check for collision with ship (simple rectangle-circle collision)
         const shipLeft = ship.x - ship.width / 2;
-        const shipRight = ship.x + ship.width / 2; // Use nose cone as right edge approx
+        const shipRight = ship.x + ship.width / 2;
         const shipTop = shipY - ship.height / 2;
         const shipBottom = shipY + ship.height / 2;
-
         const coin = coins[i];
-
-        // Find closest point on ship rectangle to coin center
         const closestX = Math.max(shipLeft, Math.min(coin.x, shipRight));
         const closestY = Math.max(shipTop, Math.min(coin.y, shipBottom));
-
-        // Calculate distance between coin center and closest point
         const distX = coin.x - closestX;
         const distY = coin.y - closestY;
         const distanceSquared = (distX * distX) + (distY * distY);
 
-        // If distance is less than coin radius squared, collision!
         if (distanceSquared < (COIN_RADIUS * COIN_RADIUS)) {
-            score += COIN_SCORE; // Add coin score
+            score += COIN_SCORE;
             scoreDisplay.textContent = `Score: ${score}`;
-            coinSynth.triggerAttackRelease("A5", "0.1"); // Play coin sound
-            coins.splice(i, 1); // Remove collected coin
-            // console.log("Coin collected!"); // Log collection
-            continue; // Skip to next coin as this one is gone
+            if (audioStarted) coinSynth.triggerAttackRelease("A5", "0.1"); // Play coin sound safely
+            coins.splice(i, 1);
+            continue;
         }
 
-        // Remove coins that are off-screen
         if (coin.x + COIN_RADIUS < 0) {
             coins.splice(i, 1);
         }
@@ -267,34 +276,21 @@ function updateCoins(deltaTime) {
 // Function to check for collisions between ship and obstacles - No Change
 function checkCollisions() {
     for (const pair of obstacles) {
-        // Check collision with top obstacle
-        if (
-            ship.x + ship.width / 2 > pair.x && // Ship right edge past obstacle left edge
-            ship.x - ship.width / 2 < pair.x + OBSTACLE_WIDTH && // Ship left edge before obstacle right edge
-            shipY - ship.height / 2 < pair.topHeight // Ship top edge above obstacle bottom edge
-        ) {
-            return true; // Collision with top
-        }
-        // Check collision with bottom obstacle
-        if (
-            ship.x + ship.width / 2 > pair.x &&
-            ship.x - ship.width / 2 < pair.x + OBSTACLE_WIDTH &&
-            shipY + ship.height / 2 > pair.bottomY // Ship bottom edge below obstacle top edge
-        ) {
-            return true; // Collision with bottom
+        if (ship.x + ship.width / 2 > pair.x && ship.x - ship.width / 2 < pair.x + OBSTACLE_WIDTH) {
+            if (shipY - ship.height / 2 < pair.topHeight || shipY + ship.height / 2 > pair.bottomY) {
+                return true;
+            }
         }
     }
-    return false; // No collision
+    return false;
 }
 
 // --- Leaderboard Functions --- No Change
 
 function getLeaderboard() {
-    const board = localStorage.getItem(LEADERBOARD_KEY); // Use the constant here
-    // console.log("Raw data from localStorage:", board);
+    const board = localStorage.getItem(LEADERBOARD_KEY);
     try {
         const parsedBoard = board ? JSON.parse(board) : [];
-        // console.log("Parsed leaderboard:", parsedBoard);
         return Array.isArray(parsedBoard) ? parsedBoard : [];
     } catch (e) {
         console.error("Error parsing leaderboard from localStorage:", e);
@@ -304,8 +300,7 @@ function getLeaderboard() {
 
 function saveLeaderboard(board) {
     try {
-        // console.log("Saving leaderboard:", board);
-        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board)); // Use the constant here
+        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board));
     } catch (e) {
         console.error("Error saving leaderboard to localStorage:", e);
     }
@@ -314,16 +309,12 @@ function saveLeaderboard(board) {
 function checkHighScore(currentScore) {
     const board = getLeaderboard();
     const lowestScore = board.length < LEADERBOARD_MAX_ENTRIES ? 0 : board[board.length - 1].score;
-    // console.log(`Checking high score: Current=${currentScore}, Lowest on board (or 0)=${lowestScore}`);
-    const isHighScore = currentScore > lowestScore;
-    // console.log("Is high score?", isHighScore);
-    return isHighScore;
+    return currentScore > lowestScore;
 }
 
 function addScoreToLeaderboard(name, score) {
     const board = getLeaderboard();
     const formattedName = name.trim().substring(0, 3).toUpperCase() || "???";
-    // console.log(`Adding score: Name=${formattedName}, Score=${score}`);
     board.push({ name: formattedName, score: score });
     board.sort((a, b) => b.score - a.score);
     const updatedBoard = board.slice(0, LEADERBOARD_MAX_ENTRIES);
@@ -332,7 +323,6 @@ function addScoreToLeaderboard(name, score) {
 }
 
 function displayLeaderboard() {
-    // console.log("Attempting to display leaderboard...");
     const board = getLeaderboard();
     if (!leaderboardList) {
         console.error("Leaderboard list element not found!");
@@ -340,13 +330,10 @@ function displayLeaderboard() {
     }
     leaderboardList.innerHTML = '';
     if (board.length === 0) {
-        // console.log("Leaderboard is empty, displaying 'No scores yet!'");
         leaderboardList.innerHTML = '<li>No scores yet!</li>';
         return;
     }
-    // console.log(`Populating leaderboard display with ${board.length} entries.`);
-    board.forEach((entry, index) => {
-        // console.log(`Adding entry ${index}:`, entry);
+    board.forEach((entry) => {
         const li = document.createElement('li');
         const nameSpan = document.createElement('span');
         nameSpan.className = 'name';
@@ -362,22 +349,30 @@ function displayLeaderboard() {
 
 // --- Game State Functions ---
 
+// MODIFIED gameOver to stop music
 function gameOver() {
-    // console.log("Executing gameOver function");
-    gameRunning = false; // Stop the game logic execution in the loop
+    console.log("Executing gameOver function");
+    gameRunning = false;
     gameOverDisplay.classList.remove('hidden');
     finalScoreDisplay.textContent = score;
     startMessage.classList.add('hidden');
 
+    // *** Stop the music ***
+    if (typeof Tone !== 'undefined' && Tone.Transport.state === "started") {
+        Tone.Transport.stop();
+        Tone.Transport.cancel(); // Remove scheduled events
+        console.log("Music stopped.");
+    }
+
     currentHighScore = checkHighScore(score);
     if (currentHighScore) {
-        // console.log("High score detected, showing name input.");
+        console.log("High score detected, showing name input.");
         nameInputArea.classList.remove('hidden');
         restartButton.classList.add('hidden');
         playerNameInput.value = '';
         playerNameInput.focus();
     } else {
-        // console.log("Not a high score, showing restart button.");
+        console.log("Not a high score, showing restart button.");
         nameInputArea.classList.add('hidden');
         restartButton.classList.remove('hidden');
     }
@@ -395,13 +390,13 @@ function initializeStars() {
     }
 }
 
-// MODIFIED resetGame to initialize coins array
+// MODIFIED resetGame to potentially start music
 function resetGame() {
-    // console.log("Executing resetGame function");
+    console.log("Executing resetGame function");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
-    coins = []; // *** Initialize coins array ***
+    coins = [];
     score = 0;
     obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2;
     gameRunning = true;
@@ -417,22 +412,27 @@ function resetGame() {
 
     initializeStars();
 
+    // *** Start music if Tone available and transport not already started ***
+    if (typeof Tone !== 'undefined' && Tone.Transport.state !== "started") {
+        // Ensure Transport is ready before starting loop
+         Tone.Transport.start();
+         musicLoop.start(0); // Start the sequence immediately
+         console.log("Music started.");
+    }
+
+
     cancelAnimationFrame(animationFrameId);
-    // console.log("Requesting first animation frame for gameLoop");
+    console.log("Requesting first animation frame for gameLoop");
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Game Loop --- MODIFIED to update/draw coins
+// --- Game Loop --- No Change
 function gameLoop(currentTime) {
-    // console.log(`Game Loop - gameRunning: ${gameRunning}, gameStarted: ${gameStarted}`);
-
     if (!gameRunning) {
-        //  console.log("Game loop stopping because gameRunning is false.");
          return;
     }
 
     if (lastTime === 0) {
-        // console.log("Game loop first frame, setting lastTime:", currentTime);
         lastTime = currentTime;
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
@@ -441,66 +441,71 @@ function gameLoop(currentTime) {
     lastTime = currentTime;
 
     if (deltaTime > 0.1) {
-        //  console.log("Large deltaTime detected, skipping frame:", deltaTime);
          animationFrameId = requestAnimationFrame(gameLoop);
          return;
     }
 
-    // --- Updates based on deltaTime ---
     updateBackground(deltaTime);
     updateShip(deltaTime);
     updateObstacles(deltaTime);
-    updateCoins(deltaTime); // *** Update coins ***
+    updateCoins(deltaTime);
 
-    // --- Drawing ---
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground();
-    drawObstacles(); // Draw obstacles behind ship/coins
-    drawCoins(); // *** Draw coins ***
-    drawShip(); // Draw ship on top
+    drawObstacles();
+    drawCoins();
+    drawShip();
 
-    // --- Collision Check ---
-    if (checkCollisions()) { // Checks obstacle collision
+    if (checkCollisions()) {
         gameOver();
     }
-    // Coin collision is handled within updateCoins
 
-    // --- Request Next Frame ---
     animationFrameId = requestAnimationFrame(gameLoop);
-
 }
 
 // --- Input Handling ---
 
 // MODIFIED triggerFlap to handle audio context start and play sound
 function triggerFlap() {
-    // console.log("Executing triggerFlap function");
-
     // Start Tone.js audio context on first interaction
-    if (!audioStarted && typeof Tone !== 'undefined') { // Check if Tone is loaded
-        Tone.start();
-        audioStarted = true;
-        console.log("Audio Context Started");
+    // Check if Tone is loaded and context hasn't started
+    if (typeof Tone !== 'undefined' && !audioStarted) {
+        Tone.start().then(() => {
+             audioStarted = true;
+             console.log("Audio Context Started");
+             // Now that context is started, proceed with flap/game start
+             handleFlapAction();
+        }).catch(e => {
+            console.error("Error starting Audio Context:", e);
+            // Proceed without audio if context fails
+             handleFlapAction();
+        });
+    } else {
+        // Audio context already started or Tone not loaded, proceed directly
+        handleFlapAction();
     }
+}
 
-    if (!gameStarted) {
-        // console.log("First flap, calling resetGame()");
-        resetGame(); // This now starts the gameLoop
+// Helper function to separate flap logic after audio context check
+function handleFlapAction() {
+     if (!gameStarted) {
+        console.log("First flap, calling resetGame()");
+        resetGame(); // This now starts the gameLoop and music
         // Play flap sound on first flap too
         if (audioStarted) flapSynth.triggerAttackRelease("C4", "0.05");
     } else if (gameRunning) {
-        //  console.log("Flapping!");
+         console.log("Flapping!");
          shipVelocityY = FLAP_VELOCITY;
          if (audioStarted) flapSynth.triggerAttackRelease("C5", "0.05"); // Play flap sound
     } else {
-        //  console.log("Flap ignored because game is not running");
+         console.log("Flap ignored because game is not running");
     }
 }
+
 
 // Handle jump input (Spacebar) - No Change
 function handleKeyDown(e) {
     if (e.code === 'Space') {
-        // console.log("Spacebar pressed");
         e.preventDefault();
         triggerFlap();
     }
@@ -508,14 +513,12 @@ function handleKeyDown(e) {
 
 // Handle touch input on the canvas - No Change
 function handleTouchStart(e) {
-    // console.log("Touch detected on canvas");
     e.preventDefault();
     triggerFlap();
 }
 
-// Handle click input on the canvas - NEW
+// Handle click input on the canvas - No Change
 function handleClick(e) {
-    // console.log("Click detected on canvas");
     e.preventDefault();
     triggerFlap();
 }
@@ -551,11 +554,11 @@ function handleNameSubmitKey(e) {
 
 // --- Initial Setup --- MODIFIED to initialize coins array
 function initializeDisplay() {
-    // console.log("Initializing display...");
+    console.log("Initializing display...");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
-    coins = []; // *** Initialize coins array ***
+    coins = [];
     score = 0;
     gameRunning = false;
     gameStarted = false;
@@ -598,25 +601,19 @@ function initializeDisplay() {
     if (restartButton) {
         restartButton.removeEventListener('click', handleRestart);
         restartButton.addEventListener('click', handleRestart);
-    } else {
-        console.error("Restart button not found!");
-    }
+    } else { console.error("Restart button not found!"); }
 
     if (submitScoreButton) {
          submitScoreButton.removeEventListener('click', handleSubmitScore);
          submitScoreButton.addEventListener('click', handleSubmitScore);
-    } else {
-        console.error("Submit score button not found!");
-    }
+    } else { console.error("Submit score button not found!"); }
 
     if (playerNameInput) {
         playerNameInput.removeEventListener('keydown', handleNameSubmitKey);
         playerNameInput.addEventListener('keydown', handleNameSubmitKey);
-    } else {
-         console.error("Player name input not found!");
-    }
+    } else { console.error("Player name input not found!"); }
 
-    // console.log("Initialization complete. Waiting for first input.");
+    console.log("Initialization complete. Waiting for first input.");
 }
 
 // Initialize the display when the script loads
