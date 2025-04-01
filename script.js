@@ -12,21 +12,21 @@ const startMessage = document.getElementById('start-message');
 // --- Game Constants ---
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
-// Adjust player size slightly for astronaut shape
-const PLAYER_WIDTH = 30;
-const PLAYER_HEIGHT = 50;
-const GROUND_Y = CANVAS_HEIGHT - PLAYER_HEIGHT; // Y position of the ground
-const GRAVITY = 0.6;
-const JUMP_FORCE = -12;
+// Spaceship Constants
+const SHIP_WIDTH = 40;
+const SHIP_HEIGHT = 30;
+const SHIP_START_X = 150;
+const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
+// Physics Constants
+const GRAVITY = 0.3; // Adjusted gravity
+const FLAP_FORCE = -6; // Upward force on flap
+const MAX_VELOCITY = 8; // Optional: Limit fall speed
 // Obstacle Constants
-const OBSTACLE_SPEED = 5;
-const OBSTACLE_SPAWN_RATE_MIN = 75; // Spawn a bit faster
-const OBSTACLE_SPAWN_RATE_RANGE = 50;
-const OBSTACLE_TYPES = [
-    { type: 'asteroid_small', width: 30, height: 30, color: '#8b4513' }, // Brown
-    { type: 'asteroid_large', width: 50, height: 50, color: '#a0522d' }, // Sienna
-    { type: 'asteroid_tall', width: 25, height: 60, color: '#708090' }, // Slate Gray
-];
+const OBSTACLE_WIDTH = 80; // Width of the vertical obstacles
+const OBSTACLE_GAP = 120; // Vertical gap between obstacle pairs
+const OBSTACLE_COLOR = '#8b4513'; // Asteroid brown
+const OBSTACLE_SPEED = 3; // Speed obstacles move left
+const OBSTACLE_SPAWN_RATE = 120; // Frames between new obstacle pairs
 // Background Constants
 const STAR_COUNT = 100;
 const STAR_BASE_SPEED = 0.5;
@@ -36,10 +36,9 @@ canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 
 // --- Game Variables ---
-let playerY;
-let playerVelocityY;
-let isJumping;
-let obstacles;
+let shipY;
+let shipVelocityY;
+let obstacles; // Array for obstacle pairs { x, topHeight, bottomY, passed }
 let score;
 let frameCount;
 let obstacleSpawnTimer;
@@ -48,23 +47,22 @@ let gameStarted;
 let animationFrameId;
 let stars; // Array for background stars
 
-// --- Player Object ---
-// Player X position remains constant
-const player = {
-    x: 50,
-    width: PLAYER_WIDTH,
-    height: PLAYER_HEIGHT,
-    // Colors for astronaut
-    bodyColor: '#ffffff', // White suit
-    visorColor: '#0000ff', // Blue visor
+// --- Spaceship Object ---
+const ship = {
+    x: SHIP_START_X,
+    width: SHIP_WIDTH,
+    height: SHIP_HEIGHT,
+    // Colors for spaceship
+    bodyColor: '#c0c0c0', // Silver
+    windowColor: '#00ffff', // Cyan
+    flameColor: '#ff4500' // OrangeRed
 };
 
 // --- Functions ---
 
-// Function to draw the background stars
+// Function to draw the background stars - Reuse from previous
 function drawBackground() {
-    // Black space background is set by CSS on canvas
-    ctx.fillStyle = '#fff'; // Star color
+    ctx.fillStyle = '#fff';
     stars.forEach(star => {
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
@@ -72,126 +70,142 @@ function drawBackground() {
     });
 }
 
-// Function to update star positions for parallax effect
+// Function to update star positions - Reuse from previous
 function updateBackground() {
     stars.forEach(star => {
         star.x -= star.speed;
-        // Wrap stars around
         if (star.x < -star.radius) {
             star.x = CANVAS_WIDTH + star.radius;
-            star.y = Math.random() * CANVAS_HEIGHT; // Reset Y position too
+            star.y = Math.random() * CANVAS_HEIGHT;
         }
     });
 }
 
-// Function to draw the player as a simple astronaut
-function drawPlayer() {
-    const bodyX = player.x;
-    const bodyY = playerY + PLAYER_HEIGHT * 0.2; // Start body lower
-    const bodyW = player.width;
-    const bodyH = PLAYER_HEIGHT * 0.8;
-
-    const headRadius = player.width / 2;
-    const headX = player.x + player.width / 2;
-    const headY = playerY + headRadius;
-
-    // Draw body (rectangle)
-    ctx.fillStyle = player.bodyColor;
-    ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
-
-    // Draw helmet (circle)
+// Function to draw the spaceship (simple rocket shape)
+function drawShip() {
+    // Main body (triangle)
+    ctx.fillStyle = ship.bodyColor;
     ctx.beginPath();
-    ctx.arc(headX, headY, headRadius, 0, Math.PI * 2);
-    ctx.fillStyle = player.bodyColor; // White helmet
+    ctx.moveTo(ship.x, shipY + ship.height / 2); // Nose cone
+    ctx.lineTo(ship.x - ship.width / 2, shipY - ship.height / 2); // Top back wing
+    ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height / 2); // Bottom back wing
+    ctx.closePath();
     ctx.fill();
 
-    // Draw visor (smaller rectangle on helmet)
-    ctx.fillStyle = player.visorColor;
-    ctx.fillRect(headX - headRadius * 0.6, headY - headRadius * 0.4, headRadius * 1.2, headRadius * 0.8);
+    // Window (small circle)
+    ctx.fillStyle = ship.windowColor;
+    ctx.beginPath();
+    ctx.arc(ship.x - ship.width * 0.1, shipY, ship.height / 5, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Simple legs (optional)
-    // ctx.fillStyle = player.bodyColor;
-    // ctx.fillRect(bodyX + bodyW * 0.1, bodyY + bodyH, bodyW * 0.3, PLAYER_HEIGHT * 0.2);
-    // ctx.fillRect(bodyX + bodyW * 0.6, bodyY + bodyH, bodyW * 0.3, PLAYER_HEIGHT * 0.2);
-}
-
-
-// Function to draw varied obstacles
-function drawObstacle(obstacle) {
-    ctx.fillStyle = obstacle.color;
-    // Simple rectangle for now, could add more complex shapes
-    ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-}
-
-// Function to update player position (gravity and jump) - NO CHANGE
-function updatePlayer() {
-    if (playerY < GROUND_Y || isJumping) {
-        playerVelocityY += GRAVITY;
-        playerY += playerVelocityY;
-    }
-    if (playerY > GROUND_Y) {
-        playerY = GROUND_Y;
-        playerVelocityY = 0;
-        isJumping = false;
+    // Flame when flapping/moving up (optional visual feedback)
+    if (shipVelocityY < -1) { // Show flame if moving up significantly
+        ctx.fillStyle = ship.flameColor;
+        ctx.beginPath();
+        ctx.moveTo(ship.x - ship.width / 2, shipY - ship.height * 0.3);
+        ctx.lineTo(ship.x - ship.width * 0.8, shipY); // Flame point 1
+        ctx.lineTo(ship.x - ship.width / 2, shipY + ship.height * 0.3);
+        ctx.closePath();
+        ctx.fill();
     }
 }
 
-// Function to spawn a new, varied obstacle
-function spawnObstacle() {
-    // Randomly select an obstacle type
-    const typeIndex = Math.floor(Math.random() * OBSTACLE_TYPES.length);
-    const obstacleType = OBSTACLE_TYPES[typeIndex];
 
-    const y = CANVAS_HEIGHT - obstacleType.height; // Obstacle sits on the ground
+// Function to draw obstacle pairs
+function drawObstacles() {
+    ctx.fillStyle = OBSTACLE_COLOR;
+    obstacles.forEach(pair => {
+        // Draw top obstacle
+        ctx.fillRect(pair.x, 0, OBSTACLE_WIDTH, pair.topHeight);
+        // Draw bottom obstacle
+        ctx.fillRect(pair.x, pair.bottomY, OBSTACLE_WIDTH, CANVAS_HEIGHT - pair.bottomY);
+    });
+}
+
+// Function to update ship position (gravity and flap)
+function updateShip() {
+    shipVelocityY += GRAVITY;
+    // Optional: Limit fall speed
+    // if (shipVelocityY > MAX_VELOCITY) {
+    //     shipVelocityY = MAX_VELOCITY;
+    // }
+    shipY += shipVelocityY;
+
+    // Check for collision with top/bottom boundaries
+    if (shipY < 0 || shipY + ship.height > CANVAS_HEIGHT) {
+        gameOver();
+    }
+}
+
+// Function to spawn a new obstacle pair
+function spawnObstaclePair() {
+    // Calculate maximum possible height for the top obstacle
+    // ensuring the gap and minimum bottom obstacle height
+    const maxTopHeight = CANVAS_HEIGHT - OBSTACLE_GAP - 20; // Min 20px for bottom obstacle
+    const minTopHeight = 20; // Min 20px for top obstacle
+
+    const topHeight = Math.random() * (maxTopHeight - minTopHeight) + minTopHeight;
+    const bottomY = topHeight + OBSTACLE_GAP;
 
     obstacles.push({
         x: CANVAS_WIDTH,
-        y: y,
-        width: obstacleType.width,
-        height: obstacleType.height,
-        color: obstacleType.color,
-        type: obstacleType.type // Store type if needed later
+        topHeight: topHeight,
+        bottomY: bottomY,
+        passed: false // Flag to track scoring
     });
-    // Reset spawn timer with randomness
-    obstacleSpawnTimer = Math.floor(Math.random() * OBSTACLE_SPAWN_RATE_RANGE) + OBSTACLE_SPAWN_RATE_MIN;
+
+    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE;
 }
 
-// Function to update obstacle positions and remove off-screen ones - NO CHANGE
+// Function to update obstacle positions and handle scoring
 function updateObstacles() {
-    let scoredThisFrame = false;
     for (let i = obstacles.length - 1; i >= 0; i--) {
         obstacles[i].x -= OBSTACLE_SPEED;
-        if (obstacles[i].x + obstacles[i].width < 0) {
+
+        // Scoring: Check if the obstacle pair has passed the ship's position
+        if (!obstacles[i].passed && obstacles[i].x + OBSTACLE_WIDTH < ship.x) {
+            score++;
+            scoreDisplay.textContent = `Score: ${score}`;
+            obstacles[i].passed = true;
+        }
+
+        // Remove obstacles that are off-screen
+        if (obstacles[i].x + OBSTACLE_WIDTH < 0) {
             obstacles.splice(i, 1);
-            if(gameRunning && !scoredThisFrame) {
-               score++;
-               scoreDisplay.textContent = `Score: ${score}`;
-               scoredThisFrame = true;
-            }
         }
     }
+
+    // Decrease spawn timer and spawn if ready
     obstacleSpawnTimer--;
     if (obstacleSpawnTimer <= 0) {
-        spawnObstacle();
+        spawnObstaclePair();
     }
 }
 
-// Function to check for collisions between player and obstacles - NO CHANGE
+// Function to check for collisions between ship and obstacles
 function checkCollisions() {
-    for (const obstacle of obstacles) {
+    for (const pair of obstacles) {
+        // Check collision with top obstacle
         if (
-            player.x < obstacle.x + obstacle.width &&
-            player.x + player.width > obstacle.x &&
-            playerY < obstacle.y + obstacle.height &&
-            playerY + player.height > obstacle.y
+            ship.x + ship.width / 2 > pair.x && // Ship right edge past obstacle left edge
+            ship.x - ship.width / 2 < pair.x + OBSTACLE_WIDTH && // Ship left edge before obstacle right edge
+            shipY - ship.height / 2 < pair.topHeight // Ship top edge above obstacle bottom edge
         ) {
-            return true;
+            return true; // Collision with top
+        }
+        // Check collision with bottom obstacle
+        if (
+            ship.x + ship.width / 2 > pair.x &&
+            ship.x - ship.width / 2 < pair.x + OBSTACLE_WIDTH &&
+            shipY + ship.height / 2 > pair.bottomY // Ship bottom edge below obstacle top edge
+        ) {
+            return true; // Collision with bottom
         }
     }
-    return false;
+    return false; // No collision
 }
 
-// Function to handle game over state - NO CHANGE
+// Function to handle game over state - NO CHANGE needed
 function gameOver() {
     gameRunning = false;
     cancelAnimationFrame(animationFrameId);
@@ -200,30 +214,27 @@ function gameOver() {
     startMessage.classList.add('hidden');
 }
 
-// Function to initialize star positions
+// Function to initialize star positions - Reuse from previous
 function initializeStars() {
     stars = [];
     for (let i = 0; i < STAR_COUNT; i++) {
         stars.push({
             x: Math.random() * CANVAS_WIDTH,
             y: Math.random() * CANVAS_HEIGHT,
-            radius: Math.random() * 1.5 + 0.5, // Small stars
-            // Add slight speed variation for parallax
+            radius: Math.random() * 1.5 + 0.5,
             speed: STAR_BASE_SPEED + Math.random() * 1.0
         });
     }
 }
 
-
 // Function to reset the game state for starting or restarting
 function resetGame() {
-    playerY = GROUND_Y;
-    playerVelocityY = 0;
-    isJumping = false;
+    shipY = SHIP_START_Y;
+    shipVelocityY = 0;
     obstacles = [];
     score = 0;
     frameCount = 0;
-    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE_MIN;
+    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE / 2; // Spawn first obstacle faster
     gameRunning = true;
     gameStarted = true;
 
@@ -234,7 +245,7 @@ function resetGame() {
     initializeStars(); // Initialize stars on reset
 
     cancelAnimationFrame(animationFrameId);
-    spawnObstacle();
+    // Don't spawn obstacle immediately, wait for timer
     gameLoop();
 }
 
@@ -249,21 +260,22 @@ function gameLoop() {
     updateBackground();
 
     // 3. Draw Background
-    drawBackground(); // Draw stars first
+    drawBackground();
 
     // 4. Update Game Elements
-    updatePlayer();
-    updateObstacles();
+    updateShip(); // Update ship physics
+    updateObstacles(); // Update obstacles & scoring
 
     // 5. Draw Game Elements
-    drawPlayer(); // Draw astronaut
-    obstacles.forEach(drawObstacle); // Draw varied obstacles
+    drawShip(); // Draw spaceship
+    drawObstacles(); // Draw vertical obstacles
 
-    // 6. Check for collisions
+    // 6. Check for collisions (obstacles)
     if (checkCollisions()) {
         gameOver();
         return;
     }
+    // Note: Boundary collision is checked within updateShip()
 
     // 7. Increment frame count
     frameCount++;
@@ -274,28 +286,29 @@ function gameLoop() {
 
 // --- Input Handling ---
 
-// Function to trigger jump action - NO CHANGE
-function triggerJump() {
+// Function to trigger flap action
+function triggerFlap() {
     if (!gameStarted) {
+        // First input starts the game
         resetGame();
-    } else if (gameRunning && !isJumping && playerY === GROUND_Y) {
-        playerVelocityY = JUMP_FORCE;
-        isJumping = true;
+    } else if (gameRunning) {
+        // Flap only if game is running
+        shipVelocityY = FLAP_FORCE; // Apply upward thrust
     }
 }
 
-// Handle jump input (Spacebar) - NO CHANGE
+// Handle jump input (Spacebar)
 function handleKeyDown(e) {
     if (e.code === 'Space') {
         e.preventDefault();
-        triggerJump();
+        triggerFlap(); // Call the flap function
     }
 }
 
-// Handle touch input on the canvas - NO CHANGE
+// Handle touch input on the canvas
 function handleTouchStart(e) {
     e.preventDefault();
-    triggerJump();
+    triggerFlap(); // Call the flap function
 }
 
 // Handle restart button click - NO CHANGE
@@ -304,21 +317,20 @@ function handleRestart() {
 }
 
 // --- Initial Setup ---
-// Function to draw the initial state (player on ground, start message)
+// Function to draw the initial state
 function initializeDisplay() {
-    playerY = GROUND_Y;
-    playerVelocityY = 0;
-    isJumping = false;
+    shipY = SHIP_START_Y;
+    shipVelocityY = 0;
     obstacles = [];
     score = 0;
     gameRunning = false;
     gameStarted = false;
 
-    initializeStars(); // Initialize stars for the initial view
+    initializeStars();
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    drawBackground(); // Draw initial background
-    drawPlayer(); // Draw the player in starting position
+    drawBackground();
+    drawShip(); // Draw the ship in starting position
 
     startMessage.classList.remove('hidden');
     gameOverDisplay.classList.add('hidden');
