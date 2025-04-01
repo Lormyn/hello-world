@@ -169,10 +169,13 @@ function updateObstacles(deltaTime) {
     }
 
     // Update and check spawn timer (using deltaTime converted to ms)
-    obstacleSpawnTimer -= deltaTime * 1000; // Decrease timer by elapsed ms
-    if (obstacleSpawnTimer <= 0) {
-        spawnObstaclePair();
-        obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS; // Reset timer
+    // Ensure timer exists before decrementing
+    if (typeof obstacleSpawnTimer === 'number') {
+         obstacleSpawnTimer -= deltaTime * 1000; // Decrease timer by elapsed ms
+         if (obstacleSpawnTimer <= 0) {
+             spawnObstaclePair();
+             obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS; // Reset timer
+         }
     }
 }
 
@@ -203,10 +206,10 @@ function checkCollisions() {
 
 function getLeaderboard() {
     const board = localStorage.getItem(LEADERBOARD_KEY);
-    console.log("Raw data from localStorage:", board);
+    // console.log("Raw data from localStorage:", board);
     try {
         const parsedBoard = board ? JSON.parse(board) : [];
-        console.log("Parsed leaderboard:", parsedBoard);
+        // console.log("Parsed leaderboard:", parsedBoard);
         return Array.isArray(parsedBoard) ? parsedBoard : [];
     } catch (e) {
         console.error("Error parsing leaderboard from localStorage:", e);
@@ -216,7 +219,7 @@ function getLeaderboard() {
 
 function saveLeaderboard(board) {
     try {
-        console.log("Saving leaderboard:", board);
+        // console.log("Saving leaderboard:", board);
         localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board));
     } catch (e) {
         console.error("Error saving leaderboard to localStorage:", e);
@@ -226,16 +229,16 @@ function saveLeaderboard(board) {
 function checkHighScore(currentScore) {
     const board = getLeaderboard();
     const lowestScore = board.length < LEADERBOARD_MAX_ENTRIES ? 0 : board[board.length - 1].score;
-    console.log(`Checking high score: Current=${currentScore}, Lowest on board (or 0)=${lowestScore}`);
+    // console.log(`Checking high score: Current=${currentScore}, Lowest on board (or 0)=${lowestScore}`);
     const isHighScore = currentScore > lowestScore;
-    console.log("Is high score?", isHighScore);
+    // console.log("Is high score?", isHighScore);
     return isHighScore;
 }
 
 function addScoreToLeaderboard(name, score) {
     const board = getLeaderboard();
     const formattedName = name.trim().substring(0, 3).toUpperCase() || "???";
-    console.log(`Adding score: Name=${formattedName}, Score=${score}`);
+    // console.log(`Adding score: Name=${formattedName}, Score=${score}`);
     board.push({ name: formattedName, score: score });
     board.sort((a, b) => b.score - a.score);
     const updatedBoard = board.slice(0, LEADERBOARD_MAX_ENTRIES);
@@ -244,7 +247,7 @@ function addScoreToLeaderboard(name, score) {
 }
 
 function displayLeaderboard() {
-    console.log("Attempting to display leaderboard...");
+    // console.log("Attempting to display leaderboard...");
     const board = getLeaderboard();
     if (!leaderboardList) {
         console.error("Leaderboard list element not found!");
@@ -252,13 +255,13 @@ function displayLeaderboard() {
     }
     leaderboardList.innerHTML = '';
     if (board.length === 0) {
-        console.log("Leaderboard is empty, displaying 'No scores yet!'");
+        // console.log("Leaderboard is empty, displaying 'No scores yet!'");
         leaderboardList.innerHTML = '<li>No scores yet!</li>';
         return;
     }
-    console.log(`Populating leaderboard display with ${board.length} entries.`);
+    // console.log(`Populating leaderboard display with ${board.length} entries.`);
     board.forEach((entry, index) => {
-        console.log(`Adding entry ${index}:`, entry);
+        // console.log(`Adding entry ${index}:`, entry);
         const li = document.createElement('li');
         const nameSpan = document.createElement('span');
         nameSpan.className = 'name';
@@ -275,9 +278,9 @@ function displayLeaderboard() {
 // --- Game State Functions --- No Change (except where noted)
 
 function gameOver() {
-    gameRunning = false;
-    // Don't cancel animation frame here if we want game over screen to persist
-    // cancelAnimationFrame(animationFrameId);
+    console.log("Executing gameOver function"); // *** ADDED LOG ***
+    gameRunning = false; // Stop the game logic execution in the loop
+    // Don't cancel animation frame here if using gameRunning flag to stop loop
     gameOverDisplay.classList.remove('hidden');
     finalScoreDisplay.textContent = score;
     startMessage.classList.add('hidden');
@@ -303,21 +306,20 @@ function initializeStars() {
             x: Math.random() * CANVAS_WIDTH,
             y: Math.random() * CANVAS_HEIGHT,
             radius: Math.random() * 1.5 + 0.5,
-            // Use speed per second for stars too
             speed: STAR_BASE_SPEED_PER_SECOND + Math.random() * 50
         });
     }
 }
 
 function resetGame() {
+    console.log("Executing resetGame function"); // *** ADDED LOG ***
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
     score = 0;
-    // frameCount = 0; // Not needed
-    obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2; // Spawn first obstacle faster
-    gameRunning = true;
-    gameStarted = true;
+    obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2;
+    gameRunning = true; // Set game to running
+    gameStarted = true; // Mark game as started
     currentHighScore = false;
     lastTime = 0; // Reset lastTime for deltaTime calculation
 
@@ -330,26 +332,38 @@ function resetGame() {
     initializeStars();
 
     cancelAnimationFrame(animationFrameId); // Stop any previous loop
-    // Start the game loop - requestAnimationFrame requires a timestamp argument
-    animationFrameId = requestAnimationFrame(gameLoop);
+    console.log("Requesting first animation frame for gameLoop"); // *** ADDED LOG ***
+    animationFrameId = requestAnimationFrame(gameLoop); // Start the game loop
 }
 
 // --- Game Loop --- MODIFIED for deltaTime
 function gameLoop(currentTime) {
-    // If game stopped, don't continue loop
-    if (!gameRunning && gameStarted) { // Check gameStarted to prevent stopping before first frame
-         cancelAnimationFrame(animationFrameId);
+    // console.log(`Game Loop - gameRunning: ${gameRunning}, gameStarted: ${gameStarted}`); // *** ADDED LOG (can be very verbose) ***
+
+    // If game stopped (e.g., via gameOver), stop requesting new frames
+    if (!gameRunning) {
+         console.log("Game loop stopping because gameRunning is false."); // *** ADDED LOG ***
+         // Don't request another frame
          return;
     }
 
     // Calculate deltaTime
     if (lastTime === 0) { // Handle first frame
+        console.log("Game loop first frame, setting lastTime:", currentTime); // *** ADDED LOG ***
         lastTime = currentTime;
-        animationFrameId = requestAnimationFrame(gameLoop);
-        return;
+        animationFrameId = requestAnimationFrame(gameLoop); // Request next frame
+        return; // Skip rest of loop for first frame
     }
     const deltaTime = (currentTime - lastTime) / 1000; // DeltaTime in seconds
     lastTime = currentTime;
+
+    // Prevent huge deltaTime jumps if tab was inactive
+    if (deltaTime > 0.1) { // e.g., ignore jumps over 100ms
+         console.log("Large deltaTime detected, skipping frame:", deltaTime); // *** ADDED LOG ***
+         animationFrameId = requestAnimationFrame(gameLoop);
+         return;
+    }
+
 
     // --- Updates based on deltaTime ---
     updateBackground(deltaTime);
@@ -364,41 +378,56 @@ function gameLoop(currentTime) {
 
     // --- Collision Check ---
     if (checkCollisions()) {
-        gameOver(); // This will set gameRunning to false, stopping the loop on next check
-        // No need to return here, let game over screen draw
+        gameOver(); // This will set gameRunning to false
+        // No need to return here, allow loop to finish this frame
     }
 
     // --- Request Next Frame ---
-    // Only request next frame if game is still running
-    if (gameRunning) {
-       animationFrameId = requestAnimationFrame(gameLoop);
-    }
+    // Request the next frame *before* checking gameRunning again
+    // This ensures the loop continues until gameRunning is set to false
+    animationFrameId = requestAnimationFrame(gameLoop);
+
 }
 
 // --- Input Handling --- MODIFIED (flap uses velocity directly)
 
 // Function to trigger flap action
 function triggerFlap() {
+    console.log("Executing triggerFlap function"); // *** ADDED LOG ***
     if (!gameStarted) {
+        console.log("First flap, calling resetGame()"); // *** ADDED LOG ***
         resetGame(); // This now starts the gameLoop
     } else if (gameRunning) {
+         console.log("Flapping!"); // *** ADDED LOG ***
         shipVelocityY = FLAP_VELOCITY; // Set velocity directly
+    } else {
+         console.log("Flap ignored because game is not running"); // *** ADDED LOG ***
     }
 }
 
-// Handle jump input (Spacebar) - No Change
+// Handle jump input (Spacebar)
 function handleKeyDown(e) {
     if (e.code === 'Space') {
+        console.log("Spacebar pressed"); // *** ADDED LOG ***
         e.preventDefault();
         triggerFlap();
     }
 }
 
-// Handle touch input on the canvas - No Change
+// Handle touch input on the canvas
 function handleTouchStart(e) {
+    console.log("Touch detected on canvas"); // *** ADDED LOG ***
     e.preventDefault();
     triggerFlap();
 }
+
+// Handle click input on the canvas - NEW
+function handleClick(e) {
+    console.log("Click detected on canvas"); // *** ADDED LOG ***
+    e.preventDefault();
+    triggerFlap();
+}
+
 
 // Handle restart button click - No Change
 function handleRestart() {
@@ -428,7 +457,7 @@ function handleNameSubmitKey(e) {
 }
 
 
-// --- Initial Setup --- MODIFIED (Starts loop differently)
+// --- Initial Setup --- MODIFIED (Starts loop differently, adds click listener)
 function initializeDisplay() {
     console.log("Initializing display...");
     shipY = SHIP_START_Y;
@@ -460,6 +489,10 @@ function initializeDisplay() {
     canvas.removeEventListener('touchstart', handleTouchStart);
     canvas.addEventListener('touchstart', handleTouchStart);
 
+    // *** ADDED CLICK LISTENER ***
+    canvas.removeEventListener('click', handleClick);
+    canvas.addEventListener('click', handleClick);
+
     restartButton.removeEventListener('click', handleRestart);
     restartButton.addEventListener('click', handleRestart);
 
@@ -470,6 +503,7 @@ function initializeDisplay() {
     playerNameInput.addEventListener('keydown', handleNameSubmitKey);
 
     // Don't start game loop here, wait for first input in triggerFlap -> resetGame
+    console.log("Initialization complete. Waiting for first input."); // *** ADDED LOG ***
 }
 
 // Initialize the display when the script loads
