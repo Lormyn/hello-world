@@ -43,7 +43,7 @@ canvas {
     top: 10px; /* Adjust spacing slightly */
     left: 10px;
     font-size: calc(10px + 1vw); /* Responsive font size */
-    max-height: 16px; /* Cap font size */
+    /* Removed max-height which might clip text */
     color: #fff;
     text-shadow: 1px 1px #ff00ff; /* Adjust shadow for smaller text */
     z-index: 10; /* Ensure score is above canvas */
@@ -69,12 +69,12 @@ canvas {
 #game-over p {
     margin: 8px 0;
     font-size: calc(12px + 1vw); /* Responsive font size */
-    max-height: 18px; /* Cap font size */
+     /* Removed max-height which might clip text */
 }
 
 #start-message {
     font-size: calc(10px + 1vw); /* Responsive font size */
-    max-height: 16px; /* Cap font size */
+     /* Removed max-height which might clip text */
     padding: 15px;
 }
 
@@ -82,8 +82,9 @@ canvas {
 #restart-button {
     font-family: 'Press Start 2P', cursive;
     font-size: calc(10px + 1vw); /* Responsive font size */
-    max-height: 16px; /* Cap font size */
-    padding: 8px 16px; /* Adjust padding */
+    /* REMOVED max-height which was causing text cutoff */
+    line-height: 1.2; /* Add line-height for better vertical spacing */
+    padding: 10px 16px; /* Adjusted padding slightly */
     margin-top: 10px;
     cursor: pointer;
     color: #000;
@@ -114,4 +115,5 @@ canvas {
     /* Adjustments for smaller screens if needed, */
     /* but the vw units and max-width should handle most cases */
 }
+
 
