@@ -12,7 +12,7 @@ COPY script.js /usr/share/nginx/html/
 
 # Copy our custom Nginx configuration template into the container
 # Note: It's copied to a temporary location first
-COPY nginx.conf /etc/nginx/nginx.conf.template
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Nginx doesn't automatically listen on the PORT variable.
 # We need to use 'envsubst' to substitute ${PORT} in our template
@@ -21,11 +21,10 @@ COPY nginx.conf /etc/nginx/nginx.conf.template
 
 # Expose the PORT environment variable (Cloud Run will set this, typically to 8080)
 # This EXPOSE instruction is more for documentation; Cloud Run uses the PORT env var regardless.
-EXPOSE ${PORT:-8080}
+EXPOSE 8080
 
 # Command to run when the container starts:
 # 1. Use `envsubst` to replace '${PORT}' in the template with the value of the PORT env variable,
 #    outputting the result to the actual nginx config file.
 # 2. Start Nginx in the foreground (`-g daemon off;`).
-CMD sh -c "envsubst '\${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
-
+CMD ["nginx", "-g", "daemon off;"]
