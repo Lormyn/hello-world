@@ -22,21 +22,26 @@ const SHIP_WIDTH = 40;
 const SHIP_HEIGHT = 30;
 const SHIP_START_X = 150;
 const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
-// Physics Constants - Values might need tweaking after deltaTime implementation
-const GRAVITY_PER_SECOND = 900; // Gravity effect per second
-const FLAP_VELOCITY = -280;   // Instant velocity change on flap (pixels per second)
+// Physics Constants
+const GRAVITY_PER_SECOND = 900;
+const FLAP_VELOCITY = -280;
 // Obstacle Constants
 const OBSTACLE_WIDTH = 80;
 const OBSTACLE_GAP = 120;
 const OBSTACLE_COLOR = '#8b4513';
-const OBSTACLE_SPEED_PER_SECOND = 300; // Speed obstacles move left (pixels per second)
-const OBSTACLE_SPAWN_INTERVAL_MS = 2000; // Spawn interval in milliseconds (2 seconds)
+const OBSTACLE_SPEED_PER_SECOND = 180;
+const OBSTACLE_SPAWN_INTERVAL_MS = 2000;
 // Background Constants
 const STAR_COUNT = 100;
-const STAR_BASE_SPEED_PER_SECOND = 30; // Pixels per second
+const STAR_BASE_SPEED_PER_SECOND = 30;
 // Leaderboard Constants
 const LEADERBOARD_KEY = 'flappyShipLeaderboard'; // *** Ensure this line exists and is correct ***
 const LEADERBOARD_MAX_ENTRIES = 10; // Max scores to keep
+// *** Coin Constants ***
+const COIN_RADIUS = 15;
+const COIN_COLOR = '#ffd700'; // Gold color
+const COIN_SCORE = 5;
+const COIN_SPAWN_CHANCE = 0.7; // 70% chance to spawn a coin with obstacles
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -46,8 +51,8 @@ canvas.height = CANVAS_HEIGHT;
 let shipY;
 let shipVelocityY; // Velocity in pixels per second
 let obstacles;
+let coins; // *** Array for coins ***
 let score;
-// let frameCount; // No longer primary driver for timing
 let obstacleSpawnTimer; // Now measures time in ms
 let gameRunning;
 let gameStarted;
@@ -55,6 +60,7 @@ let animationFrameId;
 let stars;
 let currentHighScore = false;
 let lastTime = 0; // *** For deltaTime calculation ***
+let audioStarted = false; // Flag to check if audio context is started
 
 // --- Spaceship Object ---
 const ship = {
@@ -65,6 +71,19 @@ const ship = {
     windowColor: '#00ffff',
     flameColor: '#ff4500'
 };
+
+// --- Sound Effects (Tone.js) ---
+// Initialize synths - doing this globally
+const flapSynth = new Tone.Synth({
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.01, decay: 0.05, sustain: 0, release: 0.1 }
+}).toDestination();
+
+const coinSynth = new Tone.Synth({
+    oscillator: { type: 'sine' }, // Brighter sound
+    envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 }
+}).toDestination();
+
 
 // --- Functions ---
 
@@ -123,6 +142,17 @@ function drawObstacles() {
     });
 }
 
+// *** Function to draw coins ***
+function drawCoins() {
+    ctx.fillStyle = COIN_COLOR;
+    coins.forEach(coin => {
+        ctx.beginPath();
+        ctx.arc(coin.x, coin.y, COIN_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+
 // Function to update ship position - MODIFIED for deltaTime
 function updateShip(deltaTime) {
     // Apply gravity (acceleration in pixels/sec^2)
@@ -142,13 +172,25 @@ function updateShip(deltaTime) {
     }
 }
 
-// Function to spawn a new obstacle pair - No Change in logic
+// Function to spawn a new obstacle pair - MODIFIED to potentially spawn coin
 function spawnObstaclePair() {
     const maxTopHeight = CANVAS_HEIGHT - OBSTACLE_GAP - 20;
     const minTopHeight = 20;
     const topHeight = Math.random() * (maxTopHeight - minTopHeight) + minTopHeight;
     const bottomY = topHeight + OBSTACLE_GAP;
-    obstacles.push({ x: CANVAS_WIDTH, topHeight: topHeight, bottomY: bottomY, passed: false });
+
+    const obstacleX = CANVAS_WIDTH; // Start obstacles off-screen right
+
+    obstacles.push({ x: obstacleX, topHeight: topHeight, bottomY: bottomY, passed: false });
+
+    // *** Spawn a coin within the gap based on chance ***
+    if (Math.random() < COIN_SPAWN_CHANCE) {
+        const coinX = obstacleX + OBSTACLE_WIDTH / 2; // Center coin horizontally with obstacle
+        const coinY = topHeight + OBSTACLE_GAP / 2; // Center coin vertically in the gap
+        coins.push({ x: coinX, y: coinY });
+        // console.log("Coin spawned at:", coinX, coinY); // Log coin spawn
+    }
+
     // Timer reset is handled in updateObstacles
 }
 
@@ -160,7 +202,7 @@ function updateObstacles(deltaTime) {
 
         // Scoring: Check if the obstacle pair has passed the ship's position
         if (!obstacles[i].passed && obstacles[i].x + OBSTACLE_WIDTH < ship.x) {
-            score++;
+            score++; // Score for passing obstacle gap
             scoreDisplay.textContent = `Score: ${score}`;
             obstacles[i].passed = true;
         }
@@ -181,6 +223,46 @@ function updateObstacles(deltaTime) {
          }
     }
 }
+
+// *** Function to update coin positions and check collection ***
+function updateCoins(deltaTime) {
+    for (let i = coins.length - 1; i >= 0; i--) {
+        coins[i].x -= OBSTACLE_SPEED_PER_SECOND * deltaTime; // Coins move with obstacles
+
+        // Check for collision with ship (simple rectangle-circle collision)
+        const shipLeft = ship.x - ship.width / 2;
+        const shipRight = ship.x + ship.width / 2; // Use nose cone as right edge approx
+        const shipTop = shipY - ship.height / 2;
+        const shipBottom = shipY + ship.height / 2;
+
+        const coin = coins[i];
+
+        // Find closest point on ship rectangle to coin center
+        const closestX = Math.max(shipLeft, Math.min(coin.x, shipRight));
+        const closestY = Math.max(shipTop, Math.min(coin.y, shipBottom));
+
+        // Calculate distance between coin center and closest point
+        const distX = coin.x - closestX;
+        const distY = coin.y - closestY;
+        const distanceSquared = (distX * distX) + (distY * distY);
+
+        // If distance is less than coin radius squared, collision!
+        if (distanceSquared < (COIN_RADIUS * COIN_RADIUS)) {
+            score += COIN_SCORE; // Add coin score
+            scoreDisplay.textContent = `Score: ${score}`;
+            coinSynth.triggerAttackRelease("A5", "0.1"); // Play coin sound
+            coins.splice(i, 1); // Remove collected coin
+            // console.log("Coin collected!"); // Log collection
+            continue; // Skip to next coin as this one is gone
+        }
+
+        // Remove coins that are off-screen
+        if (coin.x + COIN_RADIUS < 0) {
+            coins.splice(i, 1);
+        }
+    }
+}
+
 
 // Function to check for collisions between ship and obstacles - No Change
 function checkCollisions() {
@@ -278,25 +360,24 @@ function displayLeaderboard() {
     });
 }
 
-// --- Game State Functions --- No Change (except where noted)
+// --- Game State Functions ---
 
 function gameOver() {
-    console.log("Executing gameOver function"); // *** ADDED LOG ***
+    // console.log("Executing gameOver function");
     gameRunning = false; // Stop the game logic execution in the loop
-    // Don't cancel animation frame here if using gameRunning flag to stop loop
     gameOverDisplay.classList.remove('hidden');
     finalScoreDisplay.textContent = score;
     startMessage.classList.add('hidden');
 
     currentHighScore = checkHighScore(score);
     if (currentHighScore) {
-        console.log("High score detected, showing name input.");
+        // console.log("High score detected, showing name input.");
         nameInputArea.classList.remove('hidden');
         restartButton.classList.add('hidden');
         playerNameInput.value = '';
         playerNameInput.focus();
     } else {
-        console.log("Not a high score, showing restart button.");
+        // console.log("Not a high score, showing restart button.");
         nameInputArea.classList.add('hidden');
         restartButton.classList.remove('hidden');
     }
@@ -314,17 +395,19 @@ function initializeStars() {
     }
 }
 
+// MODIFIED resetGame to initialize coins array
 function resetGame() {
-    console.log("Executing resetGame function"); // *** ADDED LOG ***
+    // console.log("Executing resetGame function");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
+    coins = []; // *** Initialize coins array ***
     score = 0;
     obstacleSpawnTimer = OBSTACLE_SPAWN_INTERVAL_MS / 2;
-    gameRunning = true; // Set game to running
-    gameStarted = true; // Mark game as started
+    gameRunning = true;
+    gameStarted = true;
     currentHighScore = false;
-    lastTime = 0; // Reset lastTime for deltaTime calculation
+    lastTime = 0;
 
     scoreDisplay.textContent = `Score: ${score}`;
     gameOverDisplay.classList.add('hidden');
@@ -334,99 +417,105 @@ function resetGame() {
 
     initializeStars();
 
-    cancelAnimationFrame(animationFrameId); // Stop any previous loop
-    console.log("Requesting first animation frame for gameLoop"); // *** ADDED LOG ***
-    animationFrameId = requestAnimationFrame(gameLoop); // Start the game loop
+    cancelAnimationFrame(animationFrameId);
+    // console.log("Requesting first animation frame for gameLoop");
+    animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Game Loop --- MODIFIED for deltaTime
+// --- Game Loop --- MODIFIED to update/draw coins
 function gameLoop(currentTime) {
-    // console.log(`Game Loop - gameRunning: ${gameRunning}, gameStarted: ${gameStarted}`); // *** ADDED LOG (can be very verbose) ***
+    // console.log(`Game Loop - gameRunning: ${gameRunning}, gameStarted: ${gameStarted}`);
 
-    // If game stopped (e.g., via gameOver), stop requesting new frames
     if (!gameRunning) {
-         console.log("Game loop stopping because gameRunning is false."); // *** ADDED LOG ***
-         // Don't request another frame
+        //  console.log("Game loop stopping because gameRunning is false.");
          return;
     }
 
-    // Calculate deltaTime
-    if (lastTime === 0) { // Handle first frame
-        console.log("Game loop first frame, setting lastTime:", currentTime); // *** ADDED LOG ***
+    if (lastTime === 0) {
+        // console.log("Game loop first frame, setting lastTime:", currentTime);
         lastTime = currentTime;
-        animationFrameId = requestAnimationFrame(gameLoop); // Request next frame
-        return; // Skip rest of loop for first frame
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return;
     }
-    const deltaTime = (currentTime - lastTime) / 1000; // DeltaTime in seconds
+    const deltaTime = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
 
-    // Prevent huge deltaTime jumps if tab was inactive
-    if (deltaTime > 0.1) { // e.g., ignore jumps over 100ms
-         console.log("Large deltaTime detected, skipping frame:", deltaTime); // *** ADDED LOG ***
+    if (deltaTime > 0.1) {
+        //  console.log("Large deltaTime detected, skipping frame:", deltaTime);
          animationFrameId = requestAnimationFrame(gameLoop);
          return;
     }
-
 
     // --- Updates based on deltaTime ---
     updateBackground(deltaTime);
     updateShip(deltaTime);
     updateObstacles(deltaTime);
+    updateCoins(deltaTime); // *** Update coins ***
 
     // --- Drawing ---
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); // Clear canvas first
-    drawBackground(); // Draw background
-    drawShip(); // Draw spaceship
-    drawObstacles(); // Draw vertical obstacles
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawBackground();
+    drawObstacles(); // Draw obstacles behind ship/coins
+    drawCoins(); // *** Draw coins ***
+    drawShip(); // Draw ship on top
 
     // --- Collision Check ---
-    if (checkCollisions()) {
-        gameOver(); // This will set gameRunning to false
-        // No need to return here, allow loop to finish this frame
+    if (checkCollisions()) { // Checks obstacle collision
+        gameOver();
     }
+    // Coin collision is handled within updateCoins
 
     // --- Request Next Frame ---
-    // Request the next frame *before* checking gameRunning again
-    // This ensures the loop continues until gameRunning is set to false
     animationFrameId = requestAnimationFrame(gameLoop);
 
 }
 
-// --- Input Handling --- MODIFIED (flap uses velocity directly)
+// --- Input Handling ---
 
-// Function to trigger flap action
+// MODIFIED triggerFlap to handle audio context start and play sound
 function triggerFlap() {
-    console.log("Executing triggerFlap function"); // *** ADDED LOG ***
+    // console.log("Executing triggerFlap function");
+
+    // Start Tone.js audio context on first interaction
+    if (!audioStarted && typeof Tone !== 'undefined') { // Check if Tone is loaded
+        Tone.start();
+        audioStarted = true;
+        console.log("Audio Context Started");
+    }
+
     if (!gameStarted) {
-        console.log("First flap, calling resetGame()"); // *** ADDED LOG ***
+        // console.log("First flap, calling resetGame()");
         resetGame(); // This now starts the gameLoop
+        // Play flap sound on first flap too
+        if (audioStarted) flapSynth.triggerAttackRelease("C4", "0.05");
     } else if (gameRunning) {
-         console.log("Flapping!"); // *** ADDED LOG ***
-        shipVelocityY = FLAP_VELOCITY; // Set velocity directly
+        //  console.log("Flapping!");
+         shipVelocityY = FLAP_VELOCITY;
+         if (audioStarted) flapSynth.triggerAttackRelease("C5", "0.05"); // Play flap sound
     } else {
-         console.log("Flap ignored because game is not running"); // *** ADDED LOG ***
+        //  console.log("Flap ignored because game is not running");
     }
 }
 
-// Handle jump input (Spacebar)
+// Handle jump input (Spacebar) - No Change
 function handleKeyDown(e) {
     if (e.code === 'Space') {
-        console.log("Spacebar pressed"); // *** ADDED LOG ***
+        // console.log("Spacebar pressed");
         e.preventDefault();
         triggerFlap();
     }
 }
 
-// Handle touch input on the canvas
+// Handle touch input on the canvas - No Change
 function handleTouchStart(e) {
-    console.log("Touch detected on canvas"); // *** ADDED LOG ***
+    // console.log("Touch detected on canvas");
     e.preventDefault();
     triggerFlap();
 }
 
 // Handle click input on the canvas - NEW
 function handleClick(e) {
-    console.log("Click detected on canvas"); // *** ADDED LOG ***
+    // console.log("Click detected on canvas");
     e.preventDefault();
     triggerFlap();
 }
@@ -460,31 +549,30 @@ function handleNameSubmitKey(e) {
 }
 
 
-// --- Initial Setup --- MODIFIED (Starts loop differently, adds click listener)
+// --- Initial Setup --- MODIFIED to initialize coins array
 function initializeDisplay() {
-    console.log("Initializing display...");
+    // console.log("Initializing display...");
     shipY = SHIP_START_Y;
     shipVelocityY = 0;
     obstacles = [];
+    coins = []; // *** Initialize coins array ***
     score = 0;
-    gameRunning = false; // Game doesn't start running until first flap
-    gameStarted = false; // Game hasn't started yet
+    gameRunning = false;
+    gameStarted = false;
     currentHighScore = false;
-    lastTime = 0; // Initialize lastTime
+    lastTime = 0;
+    audioStarted = false; // Reset audio flag
 
     initializeStars();
 
-    // Ensure canvas context is available before drawing
     if (!ctx) {
         console.error("Canvas context (ctx) is not available!");
         return;
     }
-    // Ensure canvas element exists before adding listeners
     if (!canvas) {
          console.error("Canvas element not found!");
          return;
     }
-
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground();
@@ -504,11 +592,9 @@ function initializeDisplay() {
     canvas.removeEventListener('touchstart', handleTouchStart);
     canvas.addEventListener('touchstart', handleTouchStart);
 
-    // *** ADDED CLICK LISTENER ***
     canvas.removeEventListener('click', handleClick);
     canvas.addEventListener('click', handleClick);
 
-    // Ensure restart button exists before adding listener
     if (restartButton) {
         restartButton.removeEventListener('click', handleRestart);
         restartButton.addEventListener('click', handleRestart);
@@ -516,7 +602,6 @@ function initializeDisplay() {
         console.error("Restart button not found!");
     }
 
-    // Ensure submit score button exists
     if (submitScoreButton) {
          submitScoreButton.removeEventListener('click', handleSubmitScore);
          submitScoreButton.addEventListener('click', handleSubmitScore);
@@ -524,7 +609,6 @@ function initializeDisplay() {
         console.error("Submit score button not found!");
     }
 
-    // Ensure player name input exists
     if (playerNameInput) {
         playerNameInput.removeEventListener('keydown', handleNameSubmitKey);
         playerNameInput.addEventListener('keydown', handleNameSubmitKey);
@@ -532,9 +616,7 @@ function initializeDisplay() {
          console.error("Player name input not found!");
     }
 
-
-    // Don't start game loop here, wait for first input in triggerFlap -> resetGame
-    console.log("Initialization complete. Waiting for first input."); // *** ADDED LOG ***
+    // console.log("Initialization complete. Waiting for first input.");
 }
 
 // Initialize the display when the script loads
