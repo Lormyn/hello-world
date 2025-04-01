@@ -10,21 +10,19 @@ COPY index.html /usr/share/nginx/html/
 COPY style.css /usr/share/nginx/html/
 COPY script.js /usr/share/nginx/html/
 
-# Copy our custom Nginx configuration template into the container
-# Note: It's copied to a temporary location first
+# Copy our custom Nginx configuration directly to the final location
+# Nginx will load this configuration by default.
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Nginx doesn't automatically listen on the PORT variable.
-# We need to use 'envsubst' to substitute ${PORT} in our template
-# with the actual PORT value provided by Cloud Run environment,
-# then output it to the final nginx.conf location, and finally start nginx.
+# Explicitly set permissions for web root and config file
+# Ensure Nginx process can read these files.
+RUN chmod -R 755 /usr/share/nginx/html && \
+    chmod 644 /etc/nginx/nginx.conf
 
-# Expose the PORT environment variable (Cloud Run will set this, typically to 8080)
-# This EXPOSE instruction is more for documentation; Cloud Run uses the PORT env var regardless.
+# Expose port 8080 (for documentation and local testing)
+# Cloud Run uses this port based on the container's listening behavior.
 EXPOSE 8080
 
 # Command to run when the container starts:
-# 1. Use `envsubst` to replace '${PORT}' in the template with the value of the PORT env variable,
-#    outputting the result to the actual nginx config file.
-# 2. Start Nginx in the foreground (`-g daemon off;`).
+# Just start Nginx in the foreground. It will use /etc/nginx/nginx.conf.
 CMD ["nginx", "-g", "daemon off;"]
