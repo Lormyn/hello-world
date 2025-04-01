@@ -12,7 +12,7 @@ body {
     overflow: hidden; /* Prevent scrollbars */
 }
 
-/* Game container styling */
+/* Game container styling - make it responsive */
 #game-container {
     position: relative; /* Needed for absolute positioning of overlays */
     border: 4px solid #fff;
@@ -20,61 +20,78 @@ body {
     overflow: hidden; /* Keep elements inside */
     background-color: #111; /* Dark background for the canvas area */
     box-shadow: 0 0 20px rgba(100, 100, 255, 0.5); /* Subtle glow */
+    /* Make width responsive, up to a max */
+    width: 95vw; /* Use most of viewport width */
+    max-width: 800px; /* Max width like original canvas */
+    /* Adjust height based on aspect ratio or keep fixed */
+    /* Let canvas determine height based on its fixed aspect ratio */
 }
 
-/* Canvas styling */
+/* Canvas styling - make it scale within the container */
 canvas {
     display: block; /* Remove extra space below canvas */
     background-color: #000; /* Black background for the game */
+    /* Make canvas scale with container */
+    width: 100%;
+    /* Height will be set by JS, maintaining aspect ratio */
+    /* aspect-ratio: 2 / 1; /* You could enforce aspect ratio here if desired */
 }
 
 /* Score display styling */
 #score {
     position: absolute;
-    top: 15px;
-    left: 15px;
-    font-size: 16px;
+    top: 10px; /* Adjust spacing slightly */
+    left: 10px;
+    font-size: calc(10px + 1vw); /* Responsive font size */
+    max-height: 16px; /* Cap font size */
     color: #fff;
-    text-shadow: 2px 2px #ff00ff; /* Pink shadow for pixel effect */
+    text-shadow: 1px 1px #ff00ff; /* Adjust shadow for smaller text */
+    z-index: 10; /* Ensure score is above canvas */
 }
 
-/* Game over and start message styling */
+/* Game over and start message styling - adjust padding/font */
 #game-over, #start-message {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     text-align: center;
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 30px;
+    background-color: rgba(0, 0, 0, 0.8); /* Slightly darker background */
+    padding: 15px; /* Adjust padding */
     border-radius: 10px;
     border: 2px solid #fff;
     box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    width: 80%; /* Make overlay responsive */
+    max-width: 400px; /* Max width for overlay */
+    z-index: 20; /* Ensure overlay is above canvas */
 }
 
 #game-over p {
-    margin: 10px 0;
-    font-size: 18px;
+    margin: 8px 0;
+    font-size: calc(12px + 1vw); /* Responsive font size */
+    max-height: 18px; /* Cap font size */
 }
 
 #start-message {
-    font-size: 16px;
-    padding: 20px;
+    font-size: calc(10px + 1vw); /* Responsive font size */
+    max-height: 16px; /* Cap font size */
+    padding: 15px;
 }
 
-/* Restart button styling */
+/* Restart button styling - adjust size */
 #restart-button {
     font-family: 'Press Start 2P', cursive;
-    font-size: 16px;
-    padding: 10px 20px;
-    margin-top: 15px;
+    font-size: calc(10px + 1vw); /* Responsive font size */
+    max-height: 16px; /* Cap font size */
+    padding: 8px 16px; /* Adjust padding */
+    margin-top: 10px;
     cursor: pointer;
     color: #000;
     background-color: #00ff00; /* Bright green */
     border: 2px solid #fff;
     border-radius: 5px;
     text-transform: uppercase;
-    box-shadow: 0 4px #008000; /* Button shadow */
+    box-shadow: 0 3px #008000; /* Adjust shadow */
     transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
@@ -83,7 +100,7 @@ canvas {
 }
 
 #restart-button:active {
-    box-shadow: 0 2px #008000;
+    box-shadow: 0 1px #008000; /* Adjust shadow */
     transform: translateY(2px); /* Button press effect */
 }
 
@@ -91,3 +108,10 @@ canvas {
 .hidden {
     display: none;
 }
+
+/* Ensure canvas scales correctly on smaller screens */
+@media (max-width: 800px) {
+    /* Adjustments for smaller screens if needed, */
+    /* but the vw units and max-width should handle most cases */
+}
+
