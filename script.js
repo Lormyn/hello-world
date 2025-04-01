@@ -10,6 +10,8 @@ const restartButton = document.getElementById('restart-button');
 const startMessage = document.getElementById('start-message');
 
 // --- Game Constants ---
+// Make canvas dimensions potentially responsive later if needed
+// For now, keep fixed logical size, CSS will scale it.
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
 const PLAYER_WIDTH = 40; // Pixel size
@@ -23,7 +25,7 @@ const OBSTACLE_SPEED = 5;
 const OBSTACLE_SPAWN_RATE_MIN = 90; // Minimum frames between spawns
 const OBSTACLE_SPAWN_RATE_RANGE = 60; // Random additional frames
 
-// Set canvas dimensions
+// Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 
@@ -196,24 +198,35 @@ function gameLoop() {
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-// --- Event Listeners ---
+// --- Input Handling ---
 
-// Handle jump input (Spacebar)
-function handleInput(e) {
-    if (e.code === 'Space') {
-        e.preventDefault(); // Prevent spacebar from scrolling the page
-
-        if (!gameStarted) {
-            // First spacebar press starts the game
-            resetGame(); // Initialize and start the game
-        } else if (gameRunning && !isJumping && playerY === GROUND_Y) {
-             // Subsequent spacebar presses during the game trigger jump
-             // Only allow jump if on the ground
-            playerVelocityY = JUMP_FORCE;
-            isJumping = true;
-        }
+// Function to trigger jump action
+function triggerJump() {
+    if (!gameStarted) {
+        // First input starts the game
+        resetGame();
+    } else if (gameRunning && !isJumping && playerY === GROUND_Y) {
+        // Subsequent inputs during the game trigger jump
+        // Only allow jump if on the ground
+        playerVelocityY = JUMP_FORCE;
+        isJumping = true;
     }
 }
+
+// Handle jump input (Spacebar)
+function handleKeyDown(e) {
+    if (e.code === 'Space') {
+        e.preventDefault(); // Prevent spacebar from scrolling the page
+        triggerJump(); // Call the common jump function
+    }
+}
+
+// Handle touch input on the canvas
+function handleTouchStart(e) {
+    e.preventDefault(); // Prevent default touch actions like scrolling
+    triggerJump(); // Call the common jump function
+}
+
 
 // Handle restart button click
 function handleRestart() {
@@ -239,8 +252,16 @@ function initializeDisplay() {
     scoreDisplay.textContent = `Score: 0`; // Reset score display
 
     // Add event listeners only once during initialization
-    window.removeEventListener('keydown', handleInput); // Remove first to prevent duplicates
-    window.addEventListener('keydown', handleInput);
+    window.removeEventListener('keydown', handleKeyDown); // Remove first to prevent duplicates
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Add touch listener to the canvas
+    canvas.removeEventListener('touchstart', handleTouchStart); // Remove first
+    canvas.addEventListener('touchstart', handleTouchStart);
+    // Optional: Add click listener as fallback or for easier desktop testing
+    // canvas.removeEventListener('click', handleTouchStart);
+    // canvas.addEventListener('click', handleTouchStart);
+
 
     restartButton.removeEventListener('click', handleRestart); // Remove first
     restartButton.addEventListener('click', handleRestart);
