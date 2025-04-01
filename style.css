@@ -3,14 +3,63 @@ body {
     margin: 0;
     padding: 0;
     display: flex;
+    /* Arrange game and leaderboard */
+    flex-direction: row;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start; /* Align items to the top */
     min-height: 100vh;
     background-color: #000020; /* Dark space blue */
     font-family: 'Press Start 2P', cursive; /* Pixelated font */
     color: #fff;
-    overflow: hidden; /* Prevent scrollbars */
+    overflow-x: hidden; /* Prevent horizontal scrollbars */
+    padding-top: 20px; /* Add some padding at the top */
 }
+
+/* Leaderboard Area Styling */
+#leaderboard-area {
+    width: 200px;
+    margin-right: 30px; /* Space between leaderboard and game */
+    padding: 15px;
+    border: 3px solid #fff;
+    border-radius: 8px;
+    background-color: rgba(0, 0, 30, 0.7);
+    text-align: center;
+}
+
+#leaderboard-area h2 {
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #00ff00; /* Green title */
+}
+
+#leaderboard-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 12px;
+    text-align: left;
+    line-height: 1.6;
+}
+
+#leaderboard-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: 1px dashed #555;
+}
+#leaderboard-list li:last-child {
+    border-bottom: none;
+}
+
+#leaderboard-list .name {
+    color: #fff;
+}
+
+#leaderboard-list .score {
+    color: #ffff00; /* Yellow score */
+    font-weight: bold;
+}
+
 
 /* Game container styling - make it responsive */
 #game-container {
@@ -34,7 +83,6 @@ canvas {
     /* Make canvas scale with container */
     width: 100%;
     /* Height will be set by JS, maintaining aspect ratio */
-    /* aspect-ratio: 2 / 1; /* You could enforce aspect ratio here if desired */
 }
 
 /* Score display styling */
@@ -43,7 +91,6 @@ canvas {
     top: 10px; /* Adjust spacing slightly */
     left: 10px;
     font-size: calc(10px + 1vw); /* Responsive font size */
-    /* Removed max-height which might clip text */
     color: #fff;
     text-shadow: 1px 1px #ff00ff; /* Adjust shadow for smaller text */
     z-index: 10; /* Ensure score is above canvas */
@@ -69,20 +116,59 @@ canvas {
 #game-over p {
     margin: 8px 0;
     font-size: calc(12px + 1vw); /* Responsive font size */
-     /* Removed max-height which might clip text */
 }
 
 #start-message {
     font-size: calc(10px + 1vw); /* Responsive font size */
-     /* Removed max-height which might clip text */
     padding: 15px;
 }
+
+/* Name Input Area Styling */
+#name-input-area {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+}
+#name-input-area p {
+    font-size: 12px;
+    margin-bottom: 8px;
+    color: #00ff00;
+}
+#player-name {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 14px;
+    width: 80px; /* Fixed width for 3 chars */
+    padding: 5px;
+    border: 2px solid #fff;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    text-transform: uppercase; /* Force uppercase */
+    margin-right: 10px;
+}
+#submit-score-button {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 14px;
+    padding: 5px 10px;
+    cursor: pointer;
+    color: #000;
+    background-color: #ffff00; /* Yellow save button */
+    border: 2px solid #fff;
+    border-radius: 5px;
+    text-transform: uppercase;
+    box-shadow: 0 3px #b8860b; /* DarkGoldenrod shadow */
+}
+#submit-score-button:active {
+     box-shadow: 0 1px #b8860b;
+     transform: translateY(2px);
+}
+
 
 /* Restart button styling - adjust size */
 #restart-button {
     font-family: 'Press Start 2P', cursive;
     font-size: calc(10px + 1vw); /* Responsive font size */
-    /* REMOVED max-height which was causing text cutoff */
     line-height: 1.2; /* Add line-height for better vertical spacing */
     padding: 10px 16px; /* Adjusted padding slightly */
     margin-top: 10px;
@@ -95,11 +181,9 @@ canvas {
     box-shadow: 0 3px #008000; /* Adjust shadow */
     transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
-
 #restart-button:hover {
     background-color: #80ff80; /* Lighter green on hover */
 }
-
 #restart-button:active {
     box-shadow: 0 1px #008000; /* Adjust shadow */
     transform: translateY(2px); /* Button press effect */
@@ -110,10 +194,20 @@ canvas {
     display: none;
 }
 
-/* Ensure canvas scales correctly on smaller screens */
-@media (max-width: 800px) {
-    /* Adjustments for smaller screens if needed, */
-    /* but the vw units and max-width should handle most cases */
+/* Responsive adjustments for layout */
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    body {
+        flex-direction: column; /* Stack leaderboard above game */
+        align-items: center; /* Center items vertically */
+    }
+    #leaderboard-area {
+        width: 80%; /* Make leaderboard wider */
+        max-width: 400px;
+        margin-right: 0; /* Remove side margin */
+        margin-bottom: 20px; /* Add bottom margin */
+    }
+    #game-container {
+        width: 90%; /* Adjust game width */
+        max-width: 500px; /* Limit max width */
+    }
 }
-
-
