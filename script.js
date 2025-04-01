@@ -10,20 +10,26 @@ const restartButton = document.getElementById('restart-button');
 const startMessage = document.getElementById('start-message');
 
 // --- Game Constants ---
-// Make canvas dimensions potentially responsive later if needed
-// For now, keep fixed logical size, CSS will scale it.
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
-const PLAYER_WIDTH = 40; // Pixel size
-const PLAYER_HEIGHT = 40; // Pixel size
+// Adjust player size slightly for astronaut shape
+const PLAYER_WIDTH = 30;
+const PLAYER_HEIGHT = 50;
 const GROUND_Y = CANVAS_HEIGHT - PLAYER_HEIGHT; // Y position of the ground
 const GRAVITY = 0.6;
-const JUMP_FORCE = -12; // Negative value for upward force
-const OBSTACLE_WIDTH = 30; // Pixel size
-const OBSTACLE_HEIGHT = 60; // Pixel size
+const JUMP_FORCE = -12;
+// Obstacle Constants
 const OBSTACLE_SPEED = 5;
-const OBSTACLE_SPAWN_RATE_MIN = 90; // Minimum frames between spawns
-const OBSTACLE_SPAWN_RATE_RANGE = 60; // Random additional frames
+const OBSTACLE_SPAWN_RATE_MIN = 75; // Spawn a bit faster
+const OBSTACLE_SPAWN_RATE_RANGE = 50;
+const OBSTACLE_TYPES = [
+    { type: 'asteroid_small', width: 30, height: 30, color: '#8b4513' }, // Brown
+    { type: 'asteroid_large', width: 50, height: 50, color: '#a0522d' }, // Sienna
+    { type: 'asteroid_tall', width: 25, height: 60, color: '#708090' }, // Slate Gray
+];
+// Background Constants
+const STAR_COUNT = 100;
+const STAR_BASE_SPEED = 0.5;
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -37,236 +43,297 @@ let obstacles;
 let score;
 let frameCount;
 let obstacleSpawnTimer;
-let gameRunning; // Is the game loop active?
-let gameStarted; // Has the game been started at least once?
-let animationFrameId; // To store the ID for requestAnimationFrame
+let gameRunning;
+let gameStarted;
+let animationFrameId;
+let stars; // Array for background stars
 
 // --- Player Object ---
+// Player X position remains constant
 const player = {
     x: 50,
     width: PLAYER_WIDTH,
     height: PLAYER_HEIGHT,
-    color: '#00ff00' // Green pixel ship
+    // Colors for astronaut
+    bodyColor: '#ffffff', // White suit
+    visorColor: '#0000ff', // Blue visor
 };
 
 // --- Functions ---
 
-// Function to draw the player (a simple square for pixel effect)
-function drawPlayer() {
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x, playerY, player.width, player.height);
+// Function to draw the background stars
+function drawBackground() {
+    // Black space background is set by CSS on canvas
+    ctx.fillStyle = '#fff'; // Star color
+    stars.forEach(star => {
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fill();
+    });
 }
 
-// Function to draw an obstacle (a simple square)
+// Function to update star positions for parallax effect
+function updateBackground() {
+    stars.forEach(star => {
+        star.x -= star.speed;
+        // Wrap stars around
+        if (star.x < -star.radius) {
+            star.x = CANVAS_WIDTH + star.radius;
+            star.y = Math.random() * CANVAS_HEIGHT; // Reset Y position too
+        }
+    });
+}
+
+// Function to draw the player as a simple astronaut
+function drawPlayer() {
+    const bodyX = player.x;
+    const bodyY = playerY + PLAYER_HEIGHT * 0.2; // Start body lower
+    const bodyW = player.width;
+    const bodyH = PLAYER_HEIGHT * 0.8;
+
+    const headRadius = player.width / 2;
+    const headX = player.x + player.width / 2;
+    const headY = playerY + headRadius;
+
+    // Draw body (rectangle)
+    ctx.fillStyle = player.bodyColor;
+    ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+
+    // Draw helmet (circle)
+    ctx.beginPath();
+    ctx.arc(headX, headY, headRadius, 0, Math.PI * 2);
+    ctx.fillStyle = player.bodyColor; // White helmet
+    ctx.fill();
+
+    // Draw visor (smaller rectangle on helmet)
+    ctx.fillStyle = player.visorColor;
+    ctx.fillRect(headX - headRadius * 0.6, headY - headRadius * 0.4, headRadius * 1.2, headRadius * 0.8);
+
+    // Simple legs (optional)
+    // ctx.fillStyle = player.bodyColor;
+    // ctx.fillRect(bodyX + bodyW * 0.1, bodyY + bodyH, bodyW * 0.3, PLAYER_HEIGHT * 0.2);
+    // ctx.fillRect(bodyX + bodyW * 0.6, bodyY + bodyH, bodyW * 0.3, PLAYER_HEIGHT * 0.2);
+}
+
+
+// Function to draw varied obstacles
 function drawObstacle(obstacle) {
-    ctx.fillStyle = '#ff0000'; // Red pixel obstacle
+    ctx.fillStyle = obstacle.color;
+    // Simple rectangle for now, could add more complex shapes
     ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
 }
 
-// Function to update player position (gravity and jump)
+// Function to update player position (gravity and jump) - NO CHANGE
 function updatePlayer() {
-    // Apply gravity only if airborne or jumping
     if (playerY < GROUND_Y || isJumping) {
         playerVelocityY += GRAVITY;
         playerY += playerVelocityY;
     }
-
-    // Prevent falling through the floor
     if (playerY > GROUND_Y) {
         playerY = GROUND_Y;
         playerVelocityY = 0;
-        isJumping = false; // Landed
+        isJumping = false;
     }
 }
 
-// Function to spawn a new obstacle
+// Function to spawn a new, varied obstacle
 function spawnObstacle() {
-    const height = OBSTACLE_HEIGHT;
-    const y = CANVAS_HEIGHT - height; // Obstacle sits on the ground
+    // Randomly select an obstacle type
+    const typeIndex = Math.floor(Math.random() * OBSTACLE_TYPES.length);
+    const obstacleType = OBSTACLE_TYPES[typeIndex];
+
+    const y = CANVAS_HEIGHT - obstacleType.height; // Obstacle sits on the ground
+
     obstacles.push({
         x: CANVAS_WIDTH,
         y: y,
-        width: OBSTACLE_WIDTH,
-        height: height
+        width: obstacleType.width,
+        height: obstacleType.height,
+        color: obstacleType.color,
+        type: obstacleType.type // Store type if needed later
     });
     // Reset spawn timer with randomness
     obstacleSpawnTimer = Math.floor(Math.random() * OBSTACLE_SPAWN_RATE_RANGE) + OBSTACLE_SPAWN_RATE_MIN;
 }
 
-// Function to update obstacle positions and remove off-screen ones
+// Function to update obstacle positions and remove off-screen ones - NO CHANGE
 function updateObstacles() {
-    let scoredThisFrame = false; // Prevent multiple score increments if obstacles overlap off-screen
+    let scoredThisFrame = false;
     for (let i = obstacles.length - 1; i >= 0; i--) {
         obstacles[i].x -= OBSTACLE_SPEED;
-
-        // Remove obstacles that are off-screen
         if (obstacles[i].x + obstacles[i].width < 0) {
             obstacles.splice(i, 1);
-            // Increase score when an obstacle is passed (removed)
-            // Only score if game is active and haven't scored this frame yet
             if(gameRunning && !scoredThisFrame) {
                score++;
                scoreDisplay.textContent = `Score: ${score}`;
-               scoredThisFrame = true; // Ensure score increments only once per frame max
+               scoredThisFrame = true;
             }
         }
     }
-     // Decrease spawn timer and spawn if ready
     obstacleSpawnTimer--;
     if (obstacleSpawnTimer <= 0) {
         spawnObstacle();
     }
 }
 
-// Function to check for collisions between player and obstacles
+// Function to check for collisions between player and obstacles - NO CHANGE
 function checkCollisions() {
     for (const obstacle of obstacles) {
-        // Simple AABB (Axis-Aligned Bounding Box) collision detection
         if (
             player.x < obstacle.x + obstacle.width &&
             player.x + player.width > obstacle.x &&
             playerY < obstacle.y + obstacle.height &&
             playerY + player.height > obstacle.y
         ) {
-            return true; // Collision detected
+            return true;
         }
     }
-    return false; // No collision
+    return false;
 }
 
-// Function to handle game over state
+// Function to handle game over state - NO CHANGE
 function gameOver() {
-    gameRunning = false; // Stop the game logic
-    cancelAnimationFrame(animationFrameId); // Stop the animation loop
+    gameRunning = false;
+    cancelAnimationFrame(animationFrameId);
     gameOverDisplay.classList.remove('hidden');
     finalScoreDisplay.textContent = score;
-    startMessage.classList.add('hidden'); // Ensure start message is hidden
+    startMessage.classList.add('hidden');
 }
+
+// Function to initialize star positions
+function initializeStars() {
+    stars = [];
+    for (let i = 0; i < STAR_COUNT; i++) {
+        stars.push({
+            x: Math.random() * CANVAS_WIDTH,
+            y: Math.random() * CANVAS_HEIGHT,
+            radius: Math.random() * 1.5 + 0.5, // Small stars
+            // Add slight speed variation for parallax
+            speed: STAR_BASE_SPEED + Math.random() * 1.0
+        });
+    }
+}
+
 
 // Function to reset the game state for starting or restarting
 function resetGame() {
-    playerY = GROUND_Y; // Start on the ground
+    playerY = GROUND_Y;
     playerVelocityY = 0;
     isJumping = false;
     obstacles = [];
     score = 0;
     frameCount = 0;
-    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE_MIN; // Initial spawn timer
-    gameRunning = true; // Set game to running
-    gameStarted = true; // Game has now officially started (or restarted)
+    obstacleSpawnTimer = OBSTACLE_SPAWN_RATE_MIN;
+    gameRunning = true;
+    gameStarted = true;
 
     scoreDisplay.textContent = `Score: ${score}`;
-    gameOverDisplay.classList.add('hidden'); // Hide game over screen
-    startMessage.classList.add('hidden'); // Hide start message
+    gameOverDisplay.classList.add('hidden');
+    startMessage.classList.add('hidden');
 
-    // Clear any previous animation frame request
+    initializeStars(); // Initialize stars on reset
+
     cancelAnimationFrame(animationFrameId);
-
-    // Spawn the first obstacle relatively quickly
     spawnObstacle();
-
-    // Start the game loop
     gameLoop();
 }
 
 // --- Game Loop ---
 function gameLoop() {
-    // Stop the loop if game is not running (e.g., after game over)
     if (!gameRunning) return;
 
     // 1. Clear the canvas
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // 2. Update game elements
+    // 2. Update Background
+    updateBackground();
+
+    // 3. Draw Background
+    drawBackground(); // Draw stars first
+
+    // 4. Update Game Elements
     updatePlayer();
     updateObstacles();
 
-    // 3. Draw game elements
-    drawPlayer();
-    obstacles.forEach(drawObstacle);
+    // 5. Draw Game Elements
+    drawPlayer(); // Draw astronaut
+    obstacles.forEach(drawObstacle); // Draw varied obstacles
 
-    // 4. Check for collisions
+    // 6. Check for collisions
     if (checkCollisions()) {
-        gameOver(); // Handle game over state
-        return; // Exit loop immediately on game over
+        gameOver();
+        return;
     }
 
-    // 5. Increment frame count (can be used for difficulty scaling later)
+    // 7. Increment frame count
     frameCount++;
 
-    // 6. Request the next frame and store the ID
+    // 8. Request the next frame
     animationFrameId = requestAnimationFrame(gameLoop);
 }
 
 // --- Input Handling ---
 
-// Function to trigger jump action
+// Function to trigger jump action - NO CHANGE
 function triggerJump() {
     if (!gameStarted) {
-        // First input starts the game
         resetGame();
     } else if (gameRunning && !isJumping && playerY === GROUND_Y) {
-        // Subsequent inputs during the game trigger jump
-        // Only allow jump if on the ground
         playerVelocityY = JUMP_FORCE;
         isJumping = true;
     }
 }
 
-// Handle jump input (Spacebar)
+// Handle jump input (Spacebar) - NO CHANGE
 function handleKeyDown(e) {
     if (e.code === 'Space') {
-        e.preventDefault(); // Prevent spacebar from scrolling the page
-        triggerJump(); // Call the common jump function
+        e.preventDefault();
+        triggerJump();
     }
 }
 
-// Handle touch input on the canvas
+// Handle touch input on the canvas - NO CHANGE
 function handleTouchStart(e) {
-    e.preventDefault(); // Prevent default touch actions like scrolling
-    triggerJump(); // Call the common jump function
+    e.preventDefault();
+    triggerJump();
 }
 
-
-// Handle restart button click
+// Handle restart button click - NO CHANGE
 function handleRestart() {
-    resetGame(); // Reset game state and start the loop again
+    resetGame();
 }
 
 // --- Initial Setup ---
 // Function to draw the initial state (player on ground, start message)
 function initializeDisplay() {
-    playerY = GROUND_Y; // Place player on ground visually
+    playerY = GROUND_Y;
     playerVelocityY = 0;
     isJumping = false;
-    obstacles = []; // Clear any potential leftover obstacles
+    obstacles = [];
     score = 0;
-    gameRunning = false; // Game is not running initially
-    gameStarted = false; // Game hasn't started yet
+    gameRunning = false;
+    gameStarted = false;
 
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); // Clear canvas
+    initializeStars(); // Initialize stars for the initial view
+
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawBackground(); // Draw initial background
     drawPlayer(); // Draw the player in starting position
 
-    startMessage.classList.remove('hidden'); // Show start message
-    gameOverDisplay.classList.add('hidden'); // Ensure game over is hidden
-    scoreDisplay.textContent = `Score: 0`; // Reset score display
+    startMessage.classList.remove('hidden');
+    gameOverDisplay.classList.add('hidden');
+    scoreDisplay.textContent = `Score: 0`;
 
     // Add event listeners only once during initialization
-    window.removeEventListener('keydown', handleKeyDown); // Remove first to prevent duplicates
+    window.removeEventListener('keydown', handleKeyDown);
     window.addEventListener('keydown', handleKeyDown);
 
-    // Add touch listener to the canvas
-    canvas.removeEventListener('touchstart', handleTouchStart); // Remove first
+    canvas.removeEventListener('touchstart', handleTouchStart);
     canvas.addEventListener('touchstart', handleTouchStart);
-    // Optional: Add click listener as fallback or for easier desktop testing
-    // canvas.removeEventListener('click', handleTouchStart);
-    // canvas.addEventListener('click', handleTouchStart);
 
-
-    restartButton.removeEventListener('click', handleRestart); // Remove first
+    restartButton.removeEventListener('click', handleRestart);
     restartButton.addEventListener('click', handleRestart);
 }
 
 // Initialize the display when the script loads
 initializeDisplay();
-
