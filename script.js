@@ -18,7 +18,7 @@ const SHIP_HEIGHT = 30;
 const SHIP_START_X = 150;
 const SHIP_START_Y = CANVAS_HEIGHT / 2 - SHIP_HEIGHT / 2;
 // Physics Constants
-const GRAVITY = 0.3; // Adjusted gravity
+const GRAVITY = 0.25; // Adjusted gravity
 const FLAP_FORCE = -6; // Upward force on flap
 const MAX_VELOCITY = 8; // Optional: Limit fall speed
 // Obstacle Constants
