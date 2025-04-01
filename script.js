@@ -34,6 +34,9 @@ const OBSTACLE_SPAWN_INTERVAL_MS = 2000; // Spawn interval in milliseconds (2 se
 // Background Constants
 const STAR_COUNT = 100;
 const STAR_BASE_SPEED_PER_SECOND = 30; // Pixels per second
+// Leaderboard Constants
+const LEADERBOARD_KEY = 'flappyShipLeaderboard'; // *** Ensure this line exists and is correct ***
+const LEADERBOARD_MAX_ENTRIES = 10; // Max scores to keep
 
 // Set canvas logical dimensions
 canvas.width = CANVAS_WIDTH;
@@ -205,7 +208,7 @@ function checkCollisions() {
 // --- Leaderboard Functions --- No Change
 
 function getLeaderboard() {
-    const board = localStorage.getItem(LEADERBOARD_KEY);
+    const board = localStorage.getItem(LEADERBOARD_KEY); // Use the constant here
     // console.log("Raw data from localStorage:", board);
     try {
         const parsedBoard = board ? JSON.parse(board) : [];
@@ -220,7 +223,7 @@ function getLeaderboard() {
 function saveLeaderboard(board) {
     try {
         // console.log("Saving leaderboard:", board);
-        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board));
+        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board)); // Use the constant here
     } catch (e) {
         console.error("Error saving leaderboard to localStorage:", e);
     }
@@ -471,6 +474,18 @@ function initializeDisplay() {
 
     initializeStars();
 
+    // Ensure canvas context is available before drawing
+    if (!ctx) {
+        console.error("Canvas context (ctx) is not available!");
+        return;
+    }
+    // Ensure canvas element exists before adding listeners
+    if (!canvas) {
+         console.error("Canvas element not found!");
+         return;
+    }
+
+
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBackground();
     drawShip();
@@ -493,14 +508,30 @@ function initializeDisplay() {
     canvas.removeEventListener('click', handleClick);
     canvas.addEventListener('click', handleClick);
 
-    restartButton.removeEventListener('click', handleRestart);
-    restartButton.addEventListener('click', handleRestart);
+    // Ensure restart button exists before adding listener
+    if (restartButton) {
+        restartButton.removeEventListener('click', handleRestart);
+        restartButton.addEventListener('click', handleRestart);
+    } else {
+        console.error("Restart button not found!");
+    }
 
-    submitScoreButton.removeEventListener('click', handleSubmitScore);
-    submitScoreButton.addEventListener('click', handleSubmitScore);
+    // Ensure submit score button exists
+    if (submitScoreButton) {
+         submitScoreButton.removeEventListener('click', handleSubmitScore);
+         submitScoreButton.addEventListener('click', handleSubmitScore);
+    } else {
+        console.error("Submit score button not found!");
+    }
 
-    playerNameInput.removeEventListener('keydown', handleNameSubmitKey);
-    playerNameInput.addEventListener('keydown', handleNameSubmitKey);
+    // Ensure player name input exists
+    if (playerNameInput) {
+        playerNameInput.removeEventListener('keydown', handleNameSubmitKey);
+        playerNameInput.addEventListener('keydown', handleNameSubmitKey);
+    } else {
+         console.error("Player name input not found!");
+    }
+
 
     // Don't start game loop here, wait for first input in triggerFlap -> resetGame
     console.log("Initialization complete. Waiting for first input."); // *** ADDED LOG ***
