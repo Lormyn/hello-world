@@ -29,7 +29,7 @@ const FLAP_VELOCITY = -280;   // Instant velocity change on flap (pixels per sec
 const OBSTACLE_WIDTH = 80;
 const OBSTACLE_GAP = 120;
 const OBSTACLE_COLOR = '#8b4513';
-const OBSTACLE_SPEED_PER_SECOND = 220; // Speed obstacles move left (pixels per second)
+const OBSTACLE_SPEED_PER_SECOND = 300; // Speed obstacles move left (pixels per second)
 const OBSTACLE_SPAWN_INTERVAL_MS = 2000; // Spawn interval in milliseconds (2 seconds)
 // Background Constants
 const STAR_COUNT = 100;
